@@ -1,0 +1,35 @@
+welcome: |-
+  Welcome! Anyone can apply to become a Testnet validator candidate.
+
+  I have assigned you the `Testnet Validator Candidate` role. Please go to `#testnet-onboarding`, read the pinned instructions, and complete the onboarding challenge. Once you submit the requested evidence, a member of the Gno team will review it and send you the next steps.
+
+acknowledge: |-
+  Thanks, we received your validator onboarding submission. A member of the Gno team will review it against the published criteria and reply by `{{.Timeframe}}`. Please do not send any private key or seed phrase during the review.
+
+request_missing_info: |-
+  Thanks for the submission. Before we can complete the review, please provide or correct the following:
+
+  {{range $i, $item := .Items}}{{if $i}}
+  {{end}}- `{{$item}}`{{end}}
+
+  Please reply with the updated public evidence. Do not share private keys, seed phrases, or validator signing keys.
+
+approve: |-
+  Your onboarding challenge has been approved. We have assigned you the `Testnet Validator` role.
+
+  Next steps:
+
+  1. Wait for GovDAO approval and confirmation before considering your validator active.
+
+  New external validators start with voting power `1` and may receive more voting power later under a separate, documented process.
+
+ask_to_retry: |-
+  Thanks for completing the onboarding challenge. We cannot approve it yet because the following published criteria are not complete:
+
+  {{range $i, $c := .Criteria}}{{if $i}}
+  {{end}}- `{{$c}}`{{end}}
+
+  To retry, please `{{.Actions}}` and submit the updated evidence here. You are welcome to ask technical questions if any instruction is unclear.
+
+escalate_to_call: |-
+  Thanks for the submission. Most of the challenge is complete, but we need to clarify `{{.Topic}}` before making a decision. Could you join a short technical call at one of these times: `{{.Options}}`? The call will focus on `{{.Scope}}`.
