@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -22,12 +23,8 @@ func RegisterAskToRetry(s *discordgo.Session, cfg *config.Config, api sheet.API,
 		Name: "Ask to retry",
 		Type: discordgo.MessageApplicationCommand,
 	}
-	created, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd)
-	if err != nil {
+	if _, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd); err != nil {
 		return fmt.Errorf("create Ask to retry command: %w", err)
-	}
-	if err := restrictCommand(s, cfg.GuildID, created.ID, cfg.ValidatorReviewChannelID, cfg.ReviewerRoleID); err != nil {
-		return fmt.Errorf("restrict Ask to retry command: %w", err)
 	}
 
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -90,6 +87,7 @@ func finalizeAskToRetry(s *discordgo.Session, i *discordgo.InteractionCreate, cf
 	criteria := forms.SplitLines(criteriaRaw)
 	message, err := tpl.AskToRetry(criteria, actionsRaw)
 	if err != nil {
+		log.Printf("ask-to-retry: render template: %v", err)
 		editEphemeral(s, i.Interaction, "Could not render the message template. Please contact a team member.")
 		return
 	}
@@ -99,6 +97,7 @@ func finalizeAskToRetry(s *discordgo.Session, i *discordgo.InteractionCreate, cf
 		sheet.ColumnDecisionDate:    today(),
 		sheet.ColumnReviewers:       i.Member.User.Username,
 	}); err != nil {
+		log.Printf("ask-to-retry: update tracker for row %d: %v", row, err)
 		editEphemeral(s, i.Interaction, "Could not update the tracker. Please try again.")
 		return
 	}

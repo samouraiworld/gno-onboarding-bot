@@ -20,7 +20,7 @@ go run . -config config.yaml
 - `internal/rowref` — encodes a Sheet row number + Discord candidate ID into short strings threaded through embed footers and modal `custom_id`s, so a later reviewer action can find the right row with no database lookup.
 - `internal/sheet` — the 12-column Sheet schema, `API` interface (fake-tested), and the real `google.golang.org/api/sheets/v4` client adapter.
 - `internal/notify` — builds/parses the `#validator-review` notification embed.
-- `internal/handlers` — the six command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks, command permission restriction).
+- `internal/handlers` — the six command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks).
 
 ## Configuration
 
@@ -35,7 +35,7 @@ Never log the contents of `config.yaml` or `service-account.json`.
 - **Sheet write before any Discord role mutation**, in every handler that does both. A Sheets failure must never leave a role changed without a tracker record.
 - **One Sheet row per `/submit-request` call**, including resubmissions after `Needs retry` — never overwrite a previous attempt's row.
 - **Closed-DM fallback**: if a candidate-triggered command's DM fails, fall back to an ephemeral reply with the same real message content (not a generic error). If a reviewer-triggered command's DM fails, tell the reviewer the DM failed so they can relay it manually — still include the real message text.
-- All command permission restrictions (channel/role) go through Discord's permissions v2 API (`internal/handlers/permissions.go`), not just a client-side check.
+- Command channel/role restriction is **not** done in code. Discord's command-permissions v2 endpoint (`PUT .../commands/{id}/permissions`) rejects bot tokens outright (`20001 Bots cannot use this endpoint`) — it requires an OAuth2 Bearer token from a guild admin, which this bot does not implement. Instead, a server admin configures per-command channel/role restrictions manually via Discord's *Server Settings → Integrations → (bot) → Command permissions* UI, once after each deploy where command IDs change. See the README's "Discord application setup" section.
 
 ## Testing
 

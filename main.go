@@ -42,10 +42,16 @@ func main() {
 	}
 	s.Identify.Intents = discordgo.IntentsGuilds
 
+	ready := make(chan struct{})
+	s.AddHandlerOnce(func(s *discordgo.Session, r *discordgo.Ready) {
+		close(ready)
+	})
+
 	if err := s.Open(); err != nil {
 		log.Fatalf("open discord session: %v", err)
 	}
 	defer s.Close()
+	<-ready
 
 	registrations := []func(*discordgo.Session, *config.Config, sheet.API, *templates.Templates) error{
 		handlers.RegisterCandidate,

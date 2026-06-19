@@ -17,6 +17,10 @@ go run . -config config.yaml
 
 Expected log output: `bot is running, press Ctrl+C to exit`, with no errors during command registration.
 
+## Restricting commands by channel/role
+
+The bot does not do this itself (Discord rejects bot tokens on the permissions endpoint). After the first run registers the commands, go configure them manually per the README's "Restricting commands to a channel/role" section before running the checklist below — otherwise every command is usable everywhere by everyone, and the "not visible/usable" checks will fail for the wrong reason.
+
 ## Checklist
 
 - [ ] `/candidate-testnet` in the general-chat channel: grants `Testnet Validator Candidate`, creates a new Sheet row (`Status` = `Candidate`), and sends a DM with the exact "Reply to someone asking to become a validator" wording from `Shared.md`.

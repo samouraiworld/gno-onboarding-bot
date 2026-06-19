@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -17,12 +18,8 @@ func RegisterApprove(s *discordgo.Session, cfg *config.Config, api sheet.API, tp
 		Name: "Approve",
 		Type: discordgo.MessageApplicationCommand,
 	}
-	created, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd)
-	if err != nil {
+	if _, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd); err != nil {
 		return fmt.Errorf("create Approve command: %w", err)
-	}
-	if err := restrictCommand(s, cfg.GuildID, created.ID, cfg.ValidatorReviewChannelID, cfg.ReviewerRoleID); err != nil {
-		return fmt.Errorf("restrict Approve command: %w", err)
 	}
 
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -56,21 +53,25 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 		sheet.ColumnDecisionDate: today(),
 		sheet.ColumnReviewers:    i.Member.User.Username,
 	}); err != nil {
+		log.Printf("approve: update tracker for row %d: %v", row, err)
 		editEphemeral(s, i.Interaction, "Could not update the tracker. Please try again.")
 		return
 	}
 
 	if err := s.GuildMemberRoleAdd(cfg.GuildID, candidateID, cfg.ValidatorRoleID); err != nil {
+		log.Printf("approve: add validator role for %s: %v", candidateID, err)
 		editEphemeral(s, i.Interaction, "Updated the tracker, but could not grant the Testnet Validator role. Please assign it manually.")
 		return
 	}
 	if err := s.GuildMemberRoleRemove(cfg.GuildID, candidateID, cfg.CandidateRoleID); err != nil {
+		log.Printf("approve: remove candidate role for %s: %v", candidateID, err)
 		editEphemeral(s, i.Interaction, "Granted the Testnet Validator role, but could not remove Testnet Validator Candidate. Please remove it manually.")
 		return
 	}
 
 	message, err := tpl.Approve()
 	if err != nil {
+		log.Printf("approve: render template: %v", err)
 		editEphemeral(s, i.Interaction, "Role updated, but the approval message template failed to render. Please contact a team member.")
 		return
 	}

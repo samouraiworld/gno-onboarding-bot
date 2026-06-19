@@ -23,12 +23,8 @@ func RegisterSubmit(s *discordgo.Session, cfg *config.Config, api sheet.API, tpl
 		Description: "Submit your validator onboarding evidence for review",
 		Type:        discordgo.ChatApplicationCommand,
 	}
-	created, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd)
-	if err != nil {
+	if _, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd); err != nil {
 		return fmt.Errorf("create submit-request command: %w", err)
-	}
-	if err := restrictCommand(s, cfg.GuildID, created.ID, cfg.OnboardingChannelID, cfg.CandidateRoleID); err != nil {
-		return fmt.Errorf("restrict submit-request command: %w", err)
 	}
 
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -95,6 +91,7 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 	}
 	rowNumber, err := sheet.AppendCandidateRow(context.Background(), api, cfg.SheetID, cfg.SheetName, row)
 	if err != nil {
+		log.Printf("submit-request: append candidate row for %s: %v", candidateID, err)
 		editEphemeral(s, i.Interaction, "Something went wrong recording your submission. Please try again or contact a team member.")
 		return
 	}
@@ -106,6 +103,7 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 		AllowedMentions: &discordgo.MessageAllowedMentions{Roles: []string{cfg.ReviewerRoleID}},
 	})
 	if err != nil {
+		log.Printf("submit-request: post review notification for row %d: %v", rowNumber, err)
 		editEphemeral(s, i.Interaction, "Your submission was saved, but the review notification could not be posted. Please contact a team member.")
 		return
 	}

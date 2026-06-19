@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -22,12 +23,8 @@ func RegisterRequestMissingInfo(s *discordgo.Session, cfg *config.Config, api sh
 		Name: "Request missing info",
 		Type: discordgo.MessageApplicationCommand,
 	}
-	created, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd)
-	if err != nil {
+	if _, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd); err != nil {
 		return fmt.Errorf("create Request missing info command: %w", err)
-	}
-	if err := restrictCommand(s, cfg.GuildID, created.ID, cfg.ValidatorReviewChannelID, cfg.ReviewerRoleID); err != nil {
-		return fmt.Errorf("restrict Request missing info command: %w", err)
 	}
 
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -82,6 +79,7 @@ func finalizeRequestMissingInfo(s *discordgo.Session, i *discordgo.InteractionCr
 
 	message, err := tpl.RequestMissingInfo(items)
 	if err != nil {
+		log.Printf("request-missing-info: render template: %v", err)
 		editEphemeral(s, i.Interaction, "Could not render the message template. Please contact a team member.")
 		return
 	}
@@ -91,6 +89,7 @@ func finalizeRequestMissingInfo(s *discordgo.Session, i *discordgo.InteractionCr
 		sheet.ColumnDecisionDate:    today(),
 		sheet.ColumnReviewers:       i.Member.User.Username,
 	}); err != nil {
+		log.Printf("request-missing-info: update tracker for row %d: %v", row, err)
 		editEphemeral(s, i.Interaction, "Could not update the tracker. Please try again.")
 		return
 	}
