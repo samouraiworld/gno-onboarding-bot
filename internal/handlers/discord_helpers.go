@@ -6,10 +6,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-func boolPtr(b bool) *bool {
-	return &b
-}
-
 func today() string {
 	return time.Now().Format("2006-01-02")
 }
