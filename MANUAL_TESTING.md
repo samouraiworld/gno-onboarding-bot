@@ -3,16 +3,15 @@
 ## Prerequisites
 
 1. A Discord application + bot user (https://discord.com/developers/applications), invited to the test server with the `applications.commands` and `bot` scopes, and `Manage Roles` + `Send Messages` permissions.
-2. A Google Cloud service account with the Sheets API enabled, its JSON key saved as `bot/service-account.json` (or the path set in `config.yaml`'s `google_credentials_file`).
+2. A Google Cloud service account with the Sheets API enabled, its JSON key saved as `service-account.json` (or the path set in `config.yaml`'s `google_credentials_file`).
 3. A Google Sheet shared with the service account's email (Editor access), with exactly these 12 headers in row 1, in this order:
    `Candidate | Discord | Status | Challenge submitted | Reviewers | Missing criteria | Decision date | Valoper link | GovDAO status | Moniker & validator address | Introduction | Review message link`
 4. On the test Discord server: a `Testnet Validator Candidate` role, a `Testnet Validator` role, an `Onboarding Reviewer` role (assigned to your test reviewer account), a `#general-chat`-equivalent channel, a `#testnet-onboarding`-equivalent channel, and a new private `#validator-review` channel visible only to `Onboarding Reviewer`.
-5. `bot/config.yaml` filled in with all the above IDs (copy `config.example.yaml` and fill it in — this file is gitignored).
+5. `config.yaml` filled in with all the above IDs (copy `config.example.yaml` and fill it in — this file is gitignored).
 
 ## Running the bot
 
 ```bash
-cd bot
 go run . -config config.yaml
 ```
 
