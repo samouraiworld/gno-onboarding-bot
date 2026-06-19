@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -53,14 +54,18 @@ func deferEphemeral(s *discordgo.Session, i *discordgo.Interaction) error {
 }
 
 func editEphemeral(s *discordgo.Session, i *discordgo.Interaction, content string) {
-	s.InteractionResponseEdit(i, &discordgo.WebhookEdit{Content: &content})
+	if _, err := s.InteractionResponseEdit(i, &discordgo.WebhookEdit{Content: &content}); err != nil {
+		log.Printf("editEphemeral: failed to edit interaction response for interaction %s (this is the candidate/reviewer-facing fallback message; it was NOT delivered): %v", i.ID, err)
+	}
 }
 
 func respondError(s *discordgo.Session, i *discordgo.Interaction, content string) {
-	s.InteractionRespond(i, &discordgo.InteractionResponse{
+	if err := s.InteractionRespond(i, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{Content: content, Flags: discordgo.MessageFlagsEphemeral},
-	})
+	}); err != nil {
+		log.Printf("respondError: failed to respond to interaction %s with error message (message was NOT delivered): %v", i.ID, err)
+	}
 }
 
 func sendDM(s *discordgo.Session, userID, content string) error {
