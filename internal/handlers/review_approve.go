@@ -77,8 +77,16 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	dmFailed := sendDM(s, candidateID, message) != nil
 
 	govDAOMessage := fmt.Sprintf("<@%s> please validate this candidate's entry into the active set via GovDAO. Valoper: %s", cfg.GovDAOContactUserID, valoperLink)
-	if _, err := s.ChannelMessageSend(cfg.ValidatorReviewChannelID, govDAOMessage); err != nil {
-		editEphemeral(s, i.Interaction, "Approved, but could not post the GovDAO notification. Please tag them manually.")
+	_, govDAOErr := s.ChannelMessageSend(cfg.ValidatorReviewChannelID, govDAOMessage)
+	govDAOFailed := govDAOErr != nil
+
+	if !dmFailed && !govDAOFailed {
+		editEphemeral(s, i.Interaction, "Approved.")
+		return
+	}
+
+	if dmFailed && govDAOFailed {
+		editEphemeral(s, i.Interaction, fmt.Sprintf("Approved, but could not DM the candidate (DMs may be closed) and could not post the GovDAO notification. Please relay this manually and tag them manually:\n\n%s", message))
 		return
 	}
 
@@ -86,5 +94,6 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 		editEphemeral(s, i.Interaction, fmt.Sprintf("Approved, but could not DM the candidate (DMs may be closed). Please relay this manually:\n\n%s", message))
 		return
 	}
-	editEphemeral(s, i.Interaction, "Approved.")
+
+	editEphemeral(s, i.Interaction, "Approved, but could not post the GovDAO notification. Please tag them manually.")
 }
