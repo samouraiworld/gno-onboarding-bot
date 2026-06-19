@@ -1,0 +1,9 @@
+services:
+  bot:
+    build: .
+    container_name: gno-onboarding-bot
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./service-account.json:/app/service-account.json:ro
+      - ./templates.yaml:/app/templates.yaml:ro
