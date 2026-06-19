@@ -58,7 +58,7 @@ func showAskToRetryModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		return
 	}
 	err = showModal(s, i.Interaction, rowref.CustomID(actionAskToRetry, row, candidateID), "Ask to retry", []*discordgo.TextInput{
-		{CustomID: "criteria", Label: "Unmet criteria, one per line: Criterion: Issue", Style: discordgo.TextInputParagraph, Required: true},
+		{CustomID: "criteria", Label: "Unmet criteria, 1 per line: Criterion: Issue", Style: discordgo.TextInputParagraph, Required: true},
 		{CustomID: "actions", Label: "Actions required to retry", Style: discordgo.TextInputParagraph, Required: true},
 	})
 	if err != nil {
