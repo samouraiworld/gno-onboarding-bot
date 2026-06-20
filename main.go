@@ -48,6 +48,11 @@ func main() {
 	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure status colors: %v", err)
 	}
+	// Color the -approved tab by status too, so "GovDAO submitted" and "GovDAO
+	// pending" rows are visually separated (replaces the old divider row).
+	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
+		log.Fatalf("ensure status colors (approved): %v", err)
+	}
 	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure frozen header (source): %v", err)
 	}
