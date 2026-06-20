@@ -24,9 +24,57 @@ const (
 	ColumnOperatorAddress
 	ColumnIntroduction
 	ColumnReviewMessageLink
+	// Harvest assessment columns (N-Z), appended after the A-M intake columns.
+	// The bot refreshes these on every harvest/import; the only human-owned cell
+	// here is Selected (Z), a checkbox the bot creates but never sets.
+	ColumnReadiness     // N
+	ColumnSummary       // O
+	ColumnSetup         // P ┐
+	ColumnSync          // Q │
+	ColumnTx            // R │ seven criterion checkboxes, in harvest.Criteria order
+	ColumnValoper       // S │
+	ColumnOps           // T │
+	ColumnComms         // U │
+	ColumnSafety        // V ┘
+	ColumnRedFlags      // W
+	ColumnEngagement    // X
+	ColumnEvidenceLinks // Y
+	ColumnSelected      // Z (human-owned checkbox)
 )
 
-var columnLetters = []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"}
+var columnLetters = []string{
+	"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+	"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+}
+
+// criterionColumns are the seven checkbox columns (P-V), in harvest.Criteria order.
+var criterionColumns = []Column{
+	ColumnSetup, ColumnSync, ColumnTx, ColumnValoper, ColumnOps, ColumnComms, ColumnSafety,
+}
+
+// derivedColumns lists the harvest assessment columns N-Z in order.
+var derivedColumns = []Column{
+	ColumnReadiness, ColumnSummary,
+	ColumnSetup, ColumnSync, ColumnTx, ColumnValoper, ColumnOps, ColumnComms, ColumnSafety,
+	ColumnRedFlags, ColumnEngagement, ColumnEvidenceLinks, ColumnSelected,
+}
+
+// derivedHeaders labels the assessment columns (N-Z).
+var derivedHeaders = map[Column]string{
+	ColumnReadiness:     "Readiness",
+	ColumnSummary:       "Summary",
+	ColumnSetup:         "Setup",
+	ColumnSync:          "Sync",
+	ColumnTx:            "Tx",
+	ColumnValoper:       "Valoper",
+	ColumnOps:           "Ops",
+	ColumnComms:         "Comms",
+	ColumnSafety:        "Safety",
+	ColumnRedFlags:      "Red flags",
+	ColumnEngagement:    "Engagement",
+	ColumnEvidenceLinks: "Evidence links",
+	ColumnSelected:      "Selected",
+}
 
 func columnLetter(c Column) string {
 	return columnLetters[c]
@@ -110,6 +158,9 @@ type API interface {
 	SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error
 	SetStatusColors(ctx context.Context, spreadsheetID, sheetName string, statusCol Column, mapping map[string]string) error
 	FreezeHeaderRow(ctx context.Context, spreadsheetID, sheetName string) error
+	SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error
+	ClearValues(ctx context.Context, spreadsheetID, rangeA1 string) error
+	WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, values [][]interface{}) error
 }
 
 // StatusColors maps each status to a light hex background color used by
@@ -388,6 +439,215 @@ func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string,
 		if err := api.Update(ctx, spreadsheetID, rangeA1, value); err != nil {
 			return fmt.Errorf("update %s: %w", rangeA1, err)
 		}
+	}
+	return nil
+}
+
+// --- Harvest assessment layer (columns N-Z, the Evidence and Selected tabs) ---
+
+// EvidenceTabName / SelectedTabName are the derived tabs the harvest manages,
+// matching PR-style "{source}-approved" naming.
+func EvidenceTabName(sourceSheetName string) string { return sourceSheetName + "-evidence" }
+func SelectedTabName(sourceSheetName string) string { return sourceSheetName + "-selected" }
+
+// IsValidated reports whether a candidate has already passed onboarding and so
+// should be left untouched by the harvest pass. Case- and whitespace-tolerant.
+func IsValidated(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case strings.ToLower(StatusApproved), strings.ToLower(StatusGovDAOPending), strings.ToLower(StatusGovDAOSubmitted):
+		return true
+	}
+	return false
+}
+
+// TrackerRow is one existing candidate row, read back for the harvest pass.
+type TrackerRow struct {
+	Row             int
+	Candidate       string
+	Discord         string
+	Status          string
+	Valoper         string
+	Moniker         string
+	OperatorAddress string
+	Introduction    string
+}
+
+func cellAt(row []interface{}, idx int) string {
+	if idx < 0 || idx >= len(row) {
+		return ""
+	}
+	if s, ok := row[idx].(string); ok {
+		return s
+	}
+	return fmt.Sprint(row[idx])
+}
+
+// ReadCandidates reads the intake rows (A2:M); header row 1 is skipped and rows
+// with an empty Candidate cell are ignored.
+func ReadCandidates(ctx context.Context, api API, spreadsheetID, sheetName string) ([]TrackerRow, error) {
+	rows, err := api.Get(ctx, spreadsheetID, sheetName+"!A2:M")
+	if err != nil {
+		return nil, fmt.Errorf("read candidates: %w", err)
+	}
+	var out []TrackerRow
+	for i, r := range rows {
+		candidate := cellAt(r, int(ColumnCandidate))
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		out = append(out, TrackerRow{
+			Row:             i + 2,
+			Candidate:       candidate,
+			Discord:         cellAt(r, int(ColumnDiscord)),
+			Status:          cellAt(r, int(ColumnStatus)),
+			Valoper:         cellAt(r, int(ColumnValoperLink)),
+			Moniker:         cellAt(r, int(ColumnMoniker)),
+			OperatorAddress: cellAt(r, int(ColumnOperatorAddress)),
+			Introduction:    cellAt(r, int(ColumnIntroduction)),
+		})
+	}
+	return out, nil
+}
+
+// EnsureHarvestLayout provisions the assessment columns and the derived tabs on
+// startup: the N-Z header row + criterion/Selected checkboxes on the source tab,
+// the "{source}-selected" filtered tab, and the "{source}-evidence" tab.
+func EnsureHarvestLayout(ctx context.Context, api API, spreadsheetID, sheetName string) error {
+	header := make([]interface{}, len(derivedColumns))
+	for i, c := range derivedColumns {
+		header[i] = derivedHeaders[c]
+	}
+	hr := fmt.Sprintf("%s!%s1:%s1", sheetName, columnLetter(derivedColumns[0]), columnLetter(derivedColumns[len(derivedColumns)-1]))
+	if err := api.UpdateRow(ctx, spreadsheetID, hr, header); err != nil {
+		return fmt.Errorf("write assessment headers: %w", err)
+	}
+	if err := api.SetCheckbox(ctx, spreadsheetID, sheetName, criterionColumns[0], criterionColumns[len(criterionColumns)-1]+1); err != nil {
+		return fmt.Errorf("set criterion checkboxes: %w", err)
+	}
+	if err := api.SetCheckbox(ctx, spreadsheetID, sheetName, ColumnSelected, ColumnSelected+1); err != nil {
+		return fmt.Errorf("set selected checkbox: %w", err)
+	}
+	if err := EnsureSelectedView(ctx, api, spreadsheetID, sheetName); err != nil {
+		return err
+	}
+	if _, err := api.EnsureTab(ctx, spreadsheetID, EvidenceTabName(sheetName)); err != nil {
+		return fmt.Errorf("ensure evidence tab: %w", err)
+	}
+	return nil
+}
+
+// EnsureSelectedView creates the "{source}-selected" tab and a live FILTER that
+// mirrors every source row whose Selected checkbox is ticked. Built like
+// EnsureApprovedView (locale-aware separator, canonical formula via SetFormula).
+// The Selected column itself is excluded from the projection.
+func EnsureSelectedView(ctx context.Context, api API, spreadsheetID, sourceSheetName string) error {
+	tab := SelectedTabName(sourceSheetName)
+	if _, err := api.EnsureTab(ctx, spreadsheetID, tab); err != nil {
+		return fmt.Errorf("ensure tab %q: %w", tab, err)
+	}
+	dataEnd := columnLetter(ColumnEvidenceLinks) // last column before Selected
+	headerRange := fmt.Sprintf("%s!A1:%s1", tab, dataEnd)
+	row1, err := api.Get(ctx, spreadsheetID, headerRange)
+	if err != nil {
+		return fmt.Errorf("read header row of %q: %w", tab, err)
+	}
+	if len(row1) == 0 || rowIsEmpty(row1[0]) {
+		header := make([]interface{}, 0, len(Headers)+len(derivedColumns))
+		for _, h := range Headers {
+			header = append(header, h)
+		}
+		for _, c := range derivedColumns {
+			if c == ColumnSelected {
+				continue
+			}
+			header = append(header, derivedHeaders[c])
+		}
+		if err := api.UpdateRow(ctx, spreadsheetID, headerRange, header); err != nil {
+			return fmt.Errorf("write headers to %q: %w", tab, err)
+		}
+	}
+	locale, err := api.SpreadsheetLocale(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("read spreadsheet locale: %w", err)
+	}
+	sep := formulaArgSep(locale)
+	sel := columnLetter(ColumnSelected)
+	formula := fmt.Sprintf(`=IFERROR(FILTER('%s'!A2:%s%s '%s'!%s2:%s=TRUE)%s "No candidates selected yet")`,
+		sourceSheetName, dataEnd, sep, sourceSheetName, sel, sel, sep)
+	if err := api.SetFormula(ctx, spreadsheetID, fmt.Sprintf("%s!A2", tab), formula); err != nil {
+		return fmt.Errorf("write selected filter to %q: %w", tab, err)
+	}
+	return nil
+}
+
+// WriteHarvestColumns writes the deterministic columns /harvest owns: Red flags
+// (W) and Engagement (X). Refreshed each run.
+func WriteHarvestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, redFlags, engagement string) error {
+	return UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
+		ColumnRedFlags:   redFlags,
+		ColumnEngagement: engagement,
+	})
+}
+
+// WriteDigestColumns writes the columns /harvest-import owns: Readiness (N),
+// Summary (O), Evidence links (Y) as text, and the seven criterion checkboxes
+// (P-V) as booleans in criterionColumns order. The Selected checkbox (Z) is
+// never touched.
+func WriteDigestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, readiness, summary, evidenceLinks string, criteria []bool) error {
+	if err := UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
+		ColumnReadiness:     readiness,
+		ColumnSummary:       summary,
+		ColumnEvidenceLinks: evidenceLinks,
+	}); err != nil {
+		return err
+	}
+	return writeCriteria(ctx, api, spreadsheetID, sheetName, row, criteria)
+}
+
+func writeCriteria(ctx context.Context, api API, spreadsheetID, sheetName string, row int, criteria []bool) error {
+	vals := make([]interface{}, len(criterionColumns))
+	for i := range criterionColumns {
+		vals[i] = i < len(criteria) && criteria[i]
+	}
+	rangeA1 := fmt.Sprintf("%s!%s%d:%s%d", sheetName,
+		columnLetter(criterionColumns[0]), row,
+		columnLetter(criterionColumns[len(criterionColumns)-1]), row)
+	if err := api.UpdateRow(ctx, spreadsheetID, rangeA1, vals); err != nil {
+		return fmt.Errorf("write criterion checkboxes: %w", err)
+	}
+	return nil
+}
+
+// MarkDuplicateRow flags a superseded duplicate row: Readiness becomes
+// "Duplicate of row N" and the other assessment cells are cleared, so a stale
+// score does not linger. The human columns and Selected (Z) are left untouched.
+func MarkDuplicateRow(ctx context.Context, api API, spreadsheetID, sheetName string, row, keptRow int) error {
+	if err := UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
+		ColumnReadiness:     fmt.Sprintf("Duplicate of row %d", keptRow),
+		ColumnSummary:       "",
+		ColumnRedFlags:      "",
+		ColumnEngagement:    "",
+		ColumnEvidenceLinks: "",
+	}); err != nil {
+		return err
+	}
+	return writeCriteria(ctx, api, spreadsheetID, sheetName, row, nil) // all false
+}
+
+var evidenceHeader = []interface{}{"Candidate", "Row", "Channel", "Source", "Timestamp", "Permalink", "Text"}
+
+// WriteEvidence rewrites the evidence tab from scratch (ensure, clear A-G, write
+// header + rows).
+func WriteEvidence(ctx context.Context, api API, spreadsheetID, evidenceTab string, rows [][]interface{}) error {
+	if _, err := api.EnsureTab(ctx, spreadsheetID, evidenceTab); err != nil {
+		return fmt.Errorf("ensure evidence tab: %w", err)
+	}
+	if err := api.ClearValues(ctx, spreadsheetID, evidenceTab+"!A:G"); err != nil {
+		return fmt.Errorf("clear evidence tab: %w", err)
+	}
+	matrix := append([][]interface{}{evidenceHeader}, rows...)
+	if err := api.WriteRows(ctx, spreadsheetID, evidenceTab+"!A1", matrix); err != nil {
+		return fmt.Errorf("write evidence tab: %w", err)
 	}
 	return nil
 }

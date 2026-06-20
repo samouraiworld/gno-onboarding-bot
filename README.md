@@ -9,6 +9,7 @@ The bot registers six Discord slash commands (see `internal/handlers`):
 - `/candidate` — candidate intake
 - `/submit-request` — evidence submission (one Sheet row per call, including resubmissions)
 - request missing info, ask-to-retry, escalate-to-call, approve — reviewer decisions in `#validator-review`
+- `/harvest` and `/harvest-import` — the end-of-window competency pass (reviewers only); needs the privileged Message Content intent. See [docs/harvest.md](docs/harvest.md).
 
 ## Setup
 

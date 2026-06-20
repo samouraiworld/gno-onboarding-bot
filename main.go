@@ -54,12 +54,18 @@ func main() {
 	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
 		log.Fatalf("ensure frozen header (approved): %v", err)
 	}
+	// Harvest assessment layer: N-Z columns + checkboxes, the -selected and
+	// -evidence tabs.
+	if err := sheet.EnsureHarvestLayout(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure harvest layout: %v", err)
+	}
 
 	s, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
 		log.Fatalf("create discord session: %v", err)
 	}
-	s.Identify.Intents = discordgo.IntentsGuilds
+	// GuildMessages + MessageContent (privileged) let /harvest read channel history.
+	s.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
 
 	ready := make(chan struct{})
 	s.AddHandlerOnce(func(s *discordgo.Session, r *discordgo.Ready) {
@@ -78,6 +84,7 @@ func main() {
 		handlers.RegisterAskToRetry,
 		handlers.RegisterEscalateToCall,
 		handlers.RegisterApprove,
+		handlers.RegisterHarvest,
 	}
 	for _, register := range registrations {
 		if err := register(s, cfg, sheetsClient, tpl); err != nil {

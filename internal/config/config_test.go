@@ -72,3 +72,23 @@ func TestLoad_FileNotFound(t *testing.T) {
 		t.Fatal("expected error for missing file")
 	}
 }
+
+func TestLoad_HarvestDefault(t *testing.T) {
+	cfg, err := Load(writeTempConfig(t, validConfig))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.HarvestMaxMessages != 2000 {
+		t.Errorf("HarvestMaxMessages = %d, want 2000", cfg.HarvestMaxMessages)
+	}
+	if !cfg.HarvestSinceParsed.IsZero() {
+		t.Errorf("HarvestSinceParsed = %v, want zero", cfg.HarvestSinceParsed)
+	}
+}
+
+func TestLoad_InvalidHarvestSince(t *testing.T) {
+	path := writeTempConfig(t, validConfig+"\nharvest_since: \"not-a-timestamp\"\n")
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error for invalid harvest_since")
+	}
+}

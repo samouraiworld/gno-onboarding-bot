@@ -17,6 +17,11 @@ const (
 
 const embedFieldMax = 1024
 
+// MessagePermalink builds the jump link for a message in a guild channel.
+func MessagePermalink(guildID, channelID, messageID string) string {
+	return fmt.Sprintf("https://discord.com/channels/%s/%s/%s", guildID, channelID, messageID)
+}
+
 func truncateRunes(s string, max int) string {
 	r := []rune(s)
 	if len(r) <= max {

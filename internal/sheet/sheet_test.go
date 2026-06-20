@@ -11,6 +11,11 @@ type fakeUpdate struct {
 	value   string
 }
 
+type matrixWrite struct {
+	rangeA1 string
+	values  [][]interface{}
+}
+
 type fakeAPI struct {
 	appendRange  string
 	appendValues []interface{}
@@ -55,6 +60,12 @@ type fakeAPI struct {
 
 	freezeCalled bool
 	freezeErr    error
+
+	updateRowCalls  []matrixWrite
+	checkboxes      [][2]Column
+	cleared         []string
+	writeRowsRange  string
+	writeRowsValues [][]interface{}
 }
 
 func (f *fakeAPI) Append(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) (string, error) {
@@ -75,7 +86,24 @@ func (f *fakeAPI) Get(ctx context.Context, spreadsheetID, rangeA1 string) ([][]i
 func (f *fakeAPI) UpdateRow(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) error {
 	f.updateRowRange = rangeA1
 	f.updateRowValues = values
+	f.updateRowCalls = append(f.updateRowCalls, matrixWrite{rangeA1, [][]interface{}{values}})
 	return f.updateRowErr
+}
+
+func (f *fakeAPI) SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error {
+	f.checkboxes = append(f.checkboxes, [2]Column{startCol, endCol})
+	return nil
+}
+
+func (f *fakeAPI) ClearValues(ctx context.Context, spreadsheetID, rangeA1 string) error {
+	f.cleared = append(f.cleared, rangeA1)
+	return nil
+}
+
+func (f *fakeAPI) WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, values [][]interface{}) error {
+	f.writeRowsRange = rangeA1
+	f.writeRowsValues = values
+	return nil
 }
 
 func (f *fakeAPI) EnsureTab(ctx context.Context, spreadsheetID, sheetName string) (bool, error) {
@@ -440,4 +468,134 @@ func TestUpdateFields_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestIsValidated(t *testing.T) {
+	for _, s := range []string{StatusApproved, StatusGovDAOPending, StatusGovDAOSubmitted, " approved ", "GOVDAO SUBMITTED"} {
+		if !IsValidated(s) {
+			t.Errorf("IsValidated(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusNeedsRetry, "", "rejected"} {
+		if IsValidated(s) {
+			t.Errorf("IsValidated(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestReadCandidates(t *testing.T) {
+	api := &fakeAPI{getResult: [][]interface{}{
+		// A..M: Candidate, Discord, Status, Challenge, Reviewers, Missing, Decision, Valoper, GovDAO, Moniker, Operator, Intro, ReviewLink
+		{"alice", "@alice", "Approved", "", "", "", "", "https://v/g1a", "", "alice-val", "g1alice", "intro a", ""},
+		{"", "", ""}, // blank candidate -> skipped
+		{"bob", "@bob", "Candidate"},
+	}}
+	got, err := ReadCandidates(context.Background(), api, "id", "Candidates")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2", len(got))
+	}
+	if got[0].Row != 2 || got[0].Candidate != "alice" || got[0].Status != "Approved" ||
+		got[0].Moniker != "alice-val" || got[0].OperatorAddress != "g1alice" || got[0].Valoper != "https://v/g1a" {
+		t.Errorf("alice = %+v", got[0])
+	}
+	if got[1].Row != 4 || got[1].Candidate != "bob" || got[1].OperatorAddress != "" {
+		t.Errorf("bob = %+v", got[1])
+	}
+}
+
+func TestWriteHarvestColumns(t *testing.T) {
+	api := &fakeAPI{}
+	if err := WriteHarvestColumns(context.Background(), api, "id", "Candidates", 2, "Secret leak: private_key", "12 msgs"); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, u := range api.updates {
+		got[u.rangeA1] = u.value
+	}
+	if got["Candidates!W2"] != "Secret leak: private_key" || got["Candidates!X2"] != "12 msgs" {
+		t.Errorf("Red flags (W2)/Engagement (X2) = %v", got)
+	}
+}
+
+func TestWriteDigestColumns(t *testing.T) {
+	api := &fakeAPI{}
+	criteria := []bool{true, true, false, false, true, false, true} // setup,sync,tx,valoper,ops,comms,safety
+	if err := WriteDigestColumns(context.Background(), api, "id", "Candidates", 2, "High (6/7)", "ok", "https://l", criteria); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, u := range api.updates {
+		got[u.rangeA1] = u.value
+	}
+	if got["Candidates!N2"] != "High (6/7)" || got["Candidates!O2"] != "ok" || got["Candidates!Y2"] != "https://l" {
+		t.Errorf("text columns = %v", got)
+	}
+	if api.updateRowRange != "Candidates!P2:V2" {
+		t.Errorf("criteria range = %q, want Candidates!P2:V2", api.updateRowRange)
+	}
+	if len(api.updateRowValues) != 7 || api.updateRowValues[0] != true || api.updateRowValues[2] != false || api.updateRowValues[6] != true {
+		t.Errorf("criteria booleans = %v", api.updateRowValues)
+	}
+}
+
+func TestMarkDuplicateRow(t *testing.T) {
+	api := &fakeAPI{}
+	if err := MarkDuplicateRow(context.Background(), api, "id", "Candidates", 3, 5); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, u := range api.updates {
+		got[u.rangeA1] = u.value
+	}
+	if got["Candidates!N3"] != "Duplicate of row 5" {
+		t.Errorf("Readiness = %q", got["Candidates!N3"])
+	}
+	for _, cell := range []string{"O3", "W3", "X3", "Y3"} {
+		if v, ok := got["Candidates!"+cell]; !ok || v != "" {
+			t.Errorf("%s should be cleared (got %q, present=%v)", cell, v, ok)
+		}
+	}
+	if api.updateRowRange != "Candidates!P3:V3" || len(api.updateRowValues) != 7 || api.updateRowValues[0] != false {
+		t.Errorf("criteria not cleared: range=%q vals=%v", api.updateRowRange, api.updateRowValues)
+	}
+}
+
+func TestEnsureHarvestLayout(t *testing.T) {
+	api := &fakeAPI{}
+	if err := EnsureHarvestLayout(context.Background(), api, "id", "Candidates"); err != nil {
+		t.Fatal(err)
+	}
+	// two checkbox ranges: criteria P-V (ColumnSetup..ColumnSafety+1) and Selected
+	if len(api.checkboxes) != 2 {
+		t.Fatalf("checkbox calls = %v", api.checkboxes)
+	}
+	if api.checkboxes[0] != [2]Column{ColumnSetup, ColumnSafety + 1} {
+		t.Errorf("criteria checkbox range = %v", api.checkboxes[0])
+	}
+	if api.checkboxes[1] != [2]Column{ColumnSelected, ColumnSelected + 1} {
+		t.Errorf("selected checkbox range = %v", api.checkboxes[1])
+	}
+	// assessment header row N1:Z1 written
+	if !hasUpdateRow(api, "Candidates!N1:Z1") {
+		t.Errorf("assessment header not written; calls=%v", api.updateRowCalls)
+	}
+	// selected + evidence tabs ensured, selected filter set
+	if !api.ensureTabCalled {
+		t.Error("EnsureTab not called for derived tabs")
+	}
+	if !strings.Contains(api.setFormulaFormula, "FILTER(") {
+		t.Errorf("selected filter formula not set: %q", api.setFormulaFormula)
+	}
+}
+
+func hasUpdateRow(api *fakeAPI, rangeA1 string) bool {
+	for _, c := range api.updateRowCalls {
+		if c.rangeA1 == rangeA1 {
+			return true
+		}
+	}
+	return false
 }

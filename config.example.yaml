@@ -13,3 +13,8 @@ sheet_name: "Candidates"
 review_sla: "5 business days"
 gno_rpc_endpoint: ""   # gno RPC endpoint for test13, e.g. https://rpc.test13.testnets.gno.land
 gnoweb_base_url: ""    # gnoweb base URL, e.g. https://gnoweb.test-13.gnoland.network
+
+# End-of-window harvest (optional, see docs/harvest.md). For /harvest, also enable
+# the privileged Message Content intent and grant Read Message History.
+harvest_since: ""           # RFC3339 lower bound, e.g. "2026-06-01T00:00:00Z"; empty = all history
+harvest_max_messages: 2000  # per-channel message cap
