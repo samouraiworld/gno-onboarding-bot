@@ -81,8 +81,8 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	}
 	ctx := context.Background()
 
-	// Self-heal the layout (tabs, headers, checkboxes, Selected filter) in case
-	// it was removed, or the sheet was shared only after the bot started.
+	// Self-heal the layout (headers, checkboxes, evidence tab) in case it was
+	// removed, or the sheet was shared only after the bot started.
 	if err := sheet.EnsureHarvestLayout(ctx, api, cfg.SheetID, cfg.SheetName); err != nil {
 		editEphemeral(s, i.Interaction, "Could not prepare the sheet layout: "+err.Error())
 		return

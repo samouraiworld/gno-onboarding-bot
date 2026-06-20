@@ -568,26 +568,20 @@ func TestEnsureHarvestLayout(t *testing.T) {
 	if err := EnsureHarvestLayout(context.Background(), api, "id", "Candidates"); err != nil {
 		t.Fatal(err)
 	}
-	// two checkbox ranges: criteria P-V (ColumnSetup..ColumnSafety+1) and Selected
-	if len(api.checkboxes) != 2 {
-		t.Fatalf("checkbox calls = %v", api.checkboxes)
+	// one checkbox range: criteria P-V (ColumnSetup..ColumnSafety+1). No Selected.
+	if len(api.checkboxes) != 1 {
+		t.Fatalf("checkbox calls = %v, want 1 (criteria only)", api.checkboxes)
 	}
 	if api.checkboxes[0] != [2]Column{ColumnSetup, ColumnSafety + 1} {
 		t.Errorf("criteria checkbox range = %v", api.checkboxes[0])
 	}
-	if api.checkboxes[1] != [2]Column{ColumnSelected, ColumnSelected + 1} {
-		t.Errorf("selected checkbox range = %v", api.checkboxes[1])
-	}
-	// assessment header row N1:Z1 written
-	if !hasUpdateRow(api, "Candidates!N1:Z1") {
+	// assessment header row N1:Y1 written
+	if !hasUpdateRow(api, "Candidates!N1:Y1") {
 		t.Errorf("assessment header not written; calls=%v", api.updateRowCalls)
 	}
-	// selected + evidence tabs ensured, selected filter set
+	// evidence tab ensured
 	if !api.ensureTabCalled {
-		t.Error("EnsureTab not called for derived tabs")
-	}
-	if !strings.Contains(api.setFormulaFormula, "FILTER(") {
-		t.Errorf("selected filter formula not set: %q", api.setFormulaFormula)
+		t.Error("EnsureTab not called for the evidence tab")
 	}
 }
 

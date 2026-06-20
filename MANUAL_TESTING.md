@@ -48,12 +48,12 @@ The bot does not do this itself (Discord rejects bot tokens on the permissions e
 
 Prereq: enable the privileged **Message Content** intent and give the bot **Read Message History** in the three channels. Seed a few candidate rows (with an operator address in column K for some) and post candidate/reviewer messages, including one with a fake seed phrase or `192.168.x.x` for redaction.
 
-- [ ] Startup: a fresh sheet gets the N-Z assessment headers, checkboxes on P-V and Z, a `{source}-selected` tab (A2 holds a `FILTER` formula) and a `{source}-evidence` tab.
+- [ ] Startup: a fresh sheet gets the N-Y assessment headers, checkboxes on P-V, and a `{source}-evidence` tab.
 - [ ] `/harvest` (reviewer, in `#validator-review`): replies ephemerally with `harvest.json` + a count (incl. "duplicate rows collapsed" / "already-validated"). The `-evidence` tab fills, and Red flags (W) / Engagement (X) fill for active candidates.
 - [ ] Redaction: the seeded secret shows as `[REDACTED:...]` in `harvest.json` and the evidence tab; the Red flags cell names the kind.
 - [ ] Valoper: a candidate with operator address in column K shows `signals.valoper_state: "found"`; one without shows `not_found`.
 - [ ] Duplicate handles: two rows for one `@handle` → only the latest is evaluated; the older reads `Duplicate of row N` with its assessment cells cleared.
 - [ ] Validated rows skipped: set a row's Status to `Approved`/`GovDAO pending`/`GovDAO submitted` → absent from `harvest.json`, columns untouched.
-- [ ] Run the `competency-digest` skill on `harvest.json` → `digest.json`, then `/harvest-import` it: Readiness (N), Summary (O), criterion checkboxes (P-V), Evidence links (Y) fill; `Selected` (Z) and human columns untouched.
-- [ ] Selected tab: tick `Selected` on a candidate → it appears on the `-selected` tab; untick → it disappears. The bot never writes column Z.
+- [ ] Run the `competency-digest` skill on `harvest.json` → `digest.json`, then `/harvest-import` it: Readiness (N), Summary (O), criterion checkboxes (P-V), Evidence links (Y) fill; the human columns (A-M) are untouched.
+- [ ] Curation: set a reviewed candidate's Status to `Approved`/`GovDAO pending` → it appears in PR #4's `-approved` tab (no separate Selected column).
 - [ ] `/harvest-import` with a malformed file → ephemeral error, no writes.
