@@ -33,7 +33,7 @@ func RegisterEscalateToCall(s *discordgo.Session, cfg *config.Config, api sheet.
 			if i.ApplicationCommandData().Name != "Escalate to call" {
 				return
 			}
-			showEscalateModal(s, i)
+			showEscalateModal(s, i, cfg)
 		case discordgo.InteractionModalSubmit:
 			action, row, candidateID, err := rowref.DecodeCustomID(i.ModalSubmitData().CustomID)
 			if err != nil || action != actionEscalate {
@@ -45,7 +45,11 @@ func RegisterEscalateToCall(s *discordgo.Session, cfg *config.Config, api sheet.
 	return nil
 }
 
-func showEscalateModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func showEscalateModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
+	if !hasRole(i.Member, cfg.ReviewerRoleID) {
+		respondError(s, i.Interaction, "You need the reviewer role to use this command.")
+		return
+	}
 	data := i.ApplicationCommandData()
 	msg, ok := data.Resolved.Messages[data.TargetID]
 	if !ok {

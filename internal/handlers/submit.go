@@ -52,7 +52,7 @@ func showSubmitModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *
 		return
 	}
 	err := showModal(s, i.Interaction, actionSubmit, "Submit your validator evidence", []*discordgo.TextInput{
-		{CustomID: "valoper_address", Label: "Operator address (g1...)", Style: discordgo.TextInputShort, Required: true},
+		{CustomID: "valoper_address", Label: "Operator address (g1...)", Style: discordgo.TextInputShort, Required: true, MaxLength: 80},
 	})
 	if err != nil {
 		respondError(s, i.Interaction, "Could not open the form. Please try again.")

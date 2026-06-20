@@ -1,6 +1,6 @@
 services:
   bot:
-    build: .
+    image: ghcr.io/samouraiworld/gno-onboarding-bot:latest
     container_name: gno-onboarding-bot
     restart: unless-stopped
     volumes:
