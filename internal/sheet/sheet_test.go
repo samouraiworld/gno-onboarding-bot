@@ -35,6 +35,7 @@ type fakeAPI struct {
 	ensureTabCalled  bool
 	ensureTabCreated bool
 	ensureTabErr     error
+	ensureTabNames   []string
 
 	setFormulaRange   string
 	setFormulaFormula string
@@ -108,6 +109,7 @@ func (f *fakeAPI) WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, 
 
 func (f *fakeAPI) EnsureTab(ctx context.Context, spreadsheetID, sheetName string) (bool, error) {
 	f.ensureTabCalled = true
+	f.ensureTabNames = append(f.ensureTabNames, sheetName)
 	return f.ensureTabCreated, f.ensureTabErr
 }
 
@@ -326,8 +328,14 @@ func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
 	if !api.ensureTabCalled {
 		t.Error("EnsureTab not called")
 	}
-	if api.updateRowRange != "Test-approved!A1:M1" {
-		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test-approved!A1:M1")
+	if api.updateRowRange != "Test-approved!A1:Y1" {
+		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test-approved!A1:Y1")
+	}
+	if len(api.updateRowValues) != 25 {
+		t.Fatalf("approved headers must span A-Y (25 cols), got %d", len(api.updateRowValues))
+	}
+	if api.updateRowValues[24] != "Evidence links" {
+		t.Errorf("last approved header = %v, want \"Evidence links\"", api.updateRowValues[24])
 	}
 	if api.setFormulaRange != "Test-approved!A2" {
 		t.Errorf("got formula range %q, want %q", api.setFormulaRange, "Test-approved!A2")
@@ -428,19 +436,21 @@ func TestFormulaArgSep(t *testing.T) {
 	}
 }
 
-func TestEnsureApprovedView_SkipsHeadersButAlwaysRewritesFormula(t *testing.T) {
+func TestEnsureApprovedView_RewritesNarrowHeaderToFullWidth(t *testing.T) {
+	// An older approved tab with only the A-M intake header must be brought up to
+	// the full A-Y schema, not skipped.
 	api := &fakeAPI{getResult: [][]interface{}{{"Candidate"}}}
 	if err := EnsureApprovedView(context.Background(), api, "sheet-id", "Test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if api.updateRowRange != "" {
-		t.Errorf("UpdateRow called but headers already exist: %q", api.updateRowRange)
+	if api.updateRowRange != "Test-approved!A1:Y1" {
+		t.Errorf("headers must be rewritten to A1:Y1, got %q", api.updateRowRange)
 	}
 	if api.setFormulaRange != "Test-approved!A2" {
 		t.Errorf("SetFormula not called or wrong range: %q", api.setFormulaRange)
 	}
-	if !strings.Contains(api.setFormulaFormula, "QUERY('Test'!A2:M") {
-		t.Errorf("formula body wrong: %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "QUERY('Test'!A2:Y") {
+		t.Errorf("formula must mirror the full A2:Y range: %s", api.setFormulaFormula)
 	}
 }
 
@@ -528,8 +538,15 @@ func TestWriteDigestColumns(t *testing.T) {
 	if api.updateRowRange != "Candidates!P2:V2" {
 		t.Errorf("criteria range = %q, want Candidates!P2:V2", api.updateRowRange)
 	}
-	if len(api.updateRowValues) != 7 || api.updateRowValues[0] != true || api.updateRowValues[2] != false || api.updateRowValues[6] != true {
-		t.Errorf("criteria booleans = %v", api.updateRowValues)
+	// Assert all 7 positions so a reordering inside writeCriteria can't slip a
+	// criterion into the wrong checkbox column.
+	if len(api.updateRowValues) != len(criteria) {
+		t.Fatalf("got %d criterion cells, want %d", len(api.updateRowValues), len(criteria))
+	}
+	for i, want := range criteria {
+		if api.updateRowValues[i] != want {
+			t.Errorf("criterion[%d] = %v, want %v", i, api.updateRowValues[i], want)
+		}
 	}
 }
 
@@ -571,9 +588,15 @@ func TestEnsureHarvestLayout(t *testing.T) {
 	if !hasUpdateRow(api, "Candidates!N1:Y1") {
 		t.Errorf("assessment header not written; calls=%v", api.updateRowCalls)
 	}
-	// evidence tab ensured
-	if !api.ensureTabCalled {
-		t.Error("EnsureTab not called for the evidence tab")
+	// evidence tab ensured, by its derived name
+	foundEvidence := false
+	for _, n := range api.ensureTabNames {
+		if n == EvidenceTabName("Candidates") {
+			foundEvidence = true
+		}
+	}
+	if !foundEvidence {
+		t.Errorf("evidence tab %q not ensured; ensured=%v", EvidenceTabName("Candidates"), api.ensureTabNames)
 	}
 }
 

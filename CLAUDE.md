@@ -13,7 +13,7 @@ go run . -config config.yaml
 
 ## Layout
 
-- `main.go` — loads `config.yaml` and `templates.yaml`, connects to Google Sheets, opens the Discord session, registers the six commands.
+- `main.go` — loads `config.yaml` and `templates.yaml`, connects to Google Sheets, opens the Discord session, registers the commands.
 - `internal/config` — `config.yaml` loader/validator.
 - `internal/templates` — loads `templates.yaml` and renders it as Go `text/template`.
 - `internal/forms` — modal input validation helpers (`SplitLines`, `MissingRequired`).

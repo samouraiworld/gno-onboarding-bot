@@ -304,11 +304,42 @@ func mentions(r CandidateRecord, norm, content string) bool {
 			return true
 		}
 	}
-	// Match "@handle" anywhere in the lowercased message. Do NOT run the whole
-	// message through normalizeUsername: that strips a leading "@" and truncates
-	// at the first "#", which would drop a leading mention or any mention after a
-	// "#" (channel refs, hashtags).
-	return norm != "" && strings.Contains(strings.ToLower(content), "@"+norm)
+	// Match "@handle" as a whole token anywhere in the message. Scanning the raw
+	// content (not normalizeUsername(content), which strips a leading "@" and
+	// truncates at the first "#") keeps a leading mention or one before a channel
+	// ref / hashtag.
+	return norm != "" && containsHandle(strings.ToLower(content), norm)
+}
+
+// containsHandle reports whether content mentions "@handle" as a complete
+// username token, so "@alice" does not match "@alice2" or "@alice_dev". content
+// and handle must already be lowercased. The run of username characters after an
+// "@" must equal handle once trailing dots (illegal at the end of a Discord
+// name, so really sentence punctuation) are dropped.
+func containsHandle(content, handle string) bool {
+	if handle == "" {
+		return false
+	}
+	for i := 0; i < len(content); i++ {
+		if content[i] != '@' {
+			continue
+		}
+		j := i + 1
+		for j < len(content) && isUsernameChar(content[j]) {
+			j++
+		}
+		if strings.TrimRight(content[i+1:j], ".") == handle {
+			return true
+		}
+		i = j - 1 // resume scanning just past this token
+	}
+	return false
+}
+
+// isUsernameChar reports whether b is legal inside a Discord username
+// (lowercase letter, digit, underscore, or period).
+func isUsernameChar(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '_' || b == '.'
 }
 
 // NormalizeHandle normalizes a Discord handle for comparison (lowercased,
@@ -326,7 +357,7 @@ func normalizeUsername(s string) string {
 
 func extractUnique(re *regexp.Regexp, text string, limit int) []string {
 	seen := map[string]bool{}
-	var out []string
+	out := []string{} // non-nil so empty serializes as [] not null, like ByChannel
 	for _, m := range re.FindAllString(text, -1) {
 		m = strings.TrimRight(m, ".,);]")
 		if seen[m] {
@@ -377,10 +408,15 @@ func ParseDigest(data []byte) (DigestFile, error) {
 		validCriterion[k] = true
 	}
 	validState := map[string]bool{StateFound: true, StateNotFound: true, StateNeedsCheck: true}
+	seenRow := map[int]bool{}
 	for i, c := range d.Candidates {
 		if c.Row <= 0 {
 			return DigestFile{}, fmt.Errorf("candidate %d (%q): invalid row %d", i, c.Candidate, c.Row)
 		}
+		if seenRow[c.Row] {
+			return DigestFile{}, fmt.Errorf("candidate row %d appears more than once", c.Row)
+		}
+		seenRow[c.Row] = true
 		if c.Readiness != "" && !validReadiness[c.Readiness] {
 			return DigestFile{}, fmt.Errorf("candidate row %d: invalid readiness %q", c.Row, c.Readiness)
 		}

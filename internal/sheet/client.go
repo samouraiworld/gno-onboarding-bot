@@ -248,13 +248,13 @@ func (c *GoogleSheetsClient) SetStatusColors(ctx context.Context, spreadsheetID,
 						SheetId:          sheetID,
 						StartRowIndex:    1,
 						StartColumnIndex: 0,
-						EndColumnIndex:   int64(len(Headers)),
+						EndColumnIndex:   int64(len(columnLetters)), // full schema width A-Y
 					}},
 					BooleanRule: &sheets.BooleanRule{
 						Condition: &sheets.BooleanCondition{
 							Type: "CUSTOM_FORMULA",
 							Values: []*sheets.ConditionValue{{
-								UserEnteredValue: fmt.Sprintf(`=$%s2=%q`, colLetter(int(statusCol)), status),
+								UserEnteredValue: fmt.Sprintf(`=$%s2=%q`, columnLetter(statusCol), status),
 							}},
 						},
 						Format: &sheets.CellFormat{
@@ -314,14 +314,6 @@ func hexToRGB(hex string) (float64, float64, float64) {
 	g, _ := strconv.ParseInt(hex[2:4], 16, 0)
 	b, _ := strconv.ParseInt(hex[4:6], 16, 0)
 	return float64(r) / 255, float64(g) / 255, float64(b) / 255
-}
-
-func colLetter(zeroBased int) string {
-	letters := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"}
-	if zeroBased < 0 || zeroBased >= len(letters) {
-		return "A"
-	}
-	return letters[zeroBased]
 }
 
 // SpreadsheetLocale returns the spreadsheet's locale (e.g. "fr_FR", "en_US").

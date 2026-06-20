@@ -145,6 +145,19 @@ var Headers = []string{
 	"Review message link",
 }
 
+// allHeaders is the full A-Y header row: the intake headers (A-M) followed by the
+// harvest assessment headers (N-Y) in column order.
+func allHeaders() []interface{} {
+	out := make([]interface{}, 0, len(Headers)+len(derivedColumns))
+	for _, h := range Headers {
+		out = append(out, h)
+	}
+	for _, c := range derivedColumns {
+		out = append(out, derivedHeaders[c])
+	}
+	return out
+}
+
 type API interface {
 	Append(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) (updatedRange string, err error)
 	Update(ctx context.Context, spreadsheetID, rangeA1, value string) error
@@ -173,7 +186,8 @@ var StatusColors = map[string]string{
 	StatusGovDAOSubmitted:     "#d9c4ec",
 }
 
-// EnsureStatusColors installs the status-row coloring rules on sheetName.
+// EnsureStatusColors installs the status-row coloring rules on sheetName,
+// coloring the full A-Y schema width of each matching row.
 func EnsureStatusColors(ctx context.Context, api API, spreadsheetID, sheetName string) error {
 	return api.SetStatusColors(ctx, spreadsheetID, sheetName, ColumnStatus, StatusColors)
 }
@@ -268,33 +282,26 @@ func Ensure(ctx context.Context, api API, spreadsheetID, sheetName string) error
 }
 
 // EnsureApprovedView creates the "{source}-approved" tab if missing and
-// populates it with the column headers plus a live FILTER formula that mirrors
-// the source tab's rows whose status is StatusGovDAOPending. Safe to call
-// multiple times; only writes when cells are empty.
+// populates it with the full column headers (intake A-M plus the harvest
+// assessment columns N-Y) and a live QUERY that mirrors every column of the
+// source tab's GovDAO-progressing rows. Safe to call multiple times.
 func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheetName string) error {
 	tab := ApprovedTabName(sourceSheetName)
 	if _, err := api.EnsureTab(ctx, spreadsheetID, tab); err != nil {
 		return fmt.Errorf("ensure tab %q: %w", tab, err)
 	}
-	lastCol := columnLetter(Column(len(Headers) - 1))
+	lastCol := columnLetter(ColumnEvidenceLinks) // mirror the full A-Y schema
+	// Always (re)write the full header row: this tab is a bot-owned view, and an
+	// older A-M header row from before the assessment columns existed must be
+	// brought up to A-Y rather than skipped.
 	headerRange := fmt.Sprintf("%s!A1:%s1", tab, lastCol)
-	row1, err := api.Get(ctx, spreadsheetID, headerRange)
-	if err != nil {
-		return fmt.Errorf("read header row of %q: %w", tab, err)
+	if err := api.UpdateRow(ctx, spreadsheetID, headerRange, allHeaders()); err != nil {
+		return fmt.Errorf("write headers to %q: %w", tab, err)
 	}
-	if len(row1) == 0 || rowIsEmpty(row1[0]) {
-		values := make([]interface{}, len(Headers))
-		for i, h := range Headers {
-			values[i] = h
-		}
-		if err := api.UpdateRow(ctx, spreadsheetID, headerRange, values); err != nil {
-			return fmt.Errorf("write headers to %q: %w", tab, err)
-		}
-	}
-	// Always rewrite the FILTER formula. Idempotent on the happy path; on the
-	// unhappy path (cell holds a locale-broken formula whose rendered value
-	// reads as "#ERROR!", i.e. non-empty), a skip check would prevent the fix
-	// from ever applying.
+	// Always rewrite the QUERY too. Idempotent on the happy path; on the unhappy
+	// path (cell holds a locale-broken formula whose rendered value reads as
+	// "#ERROR!", i.e. non-empty), a skip check would prevent the fix from ever
+	// applying.
 	locale, err := api.SpreadsheetLocale(ctx, spreadsheetID)
 	if err != nil {
 		return fmt.Errorf("read spreadsheet locale: %w", err)
@@ -416,8 +423,8 @@ func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string,
 
 // --- Harvest assessment layer (columns N-Y, the Evidence tab) ---
 
-// EvidenceTabName is the derived raw-evidence tab the harvest manages, matching
-// PR-style "{source}-approved" naming.
+// EvidenceTabName is the derived raw-evidence tab the harvest manages, named
+// "{source}-evidence" (mirrors the "{source}-approved" naming of the view tab).
 func EvidenceTabName(sourceSheetName string) string { return sourceSheetName + "-evidence" }
 
 // IsValidated reports whether a candidate has already passed onboarding and so

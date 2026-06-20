@@ -110,27 +110,7 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	}
 	// Collapse duplicate handles (a resubmission appends a new row): keep the
 	// latest row per handle for evaluation, mark the older ones as duplicates.
-	latestRow := map[string]int{}
-	for _, r := range active {
-		if h := harvest.NormalizeHandle(r.Discord); h != "" && r.Row > latestRow[h] {
-			latestRow[h] = r.Row
-		}
-	}
-	var records []sheet.TrackerRow
-	var superseded []struct{ row, keptRow int }
-	seen := map[string]bool{}
-	for _, r := range active {
-		h := harvest.NormalizeHandle(r.Discord)
-		switch {
-		case h == "":
-			records = append(records, r) // no handle to dedup on
-		case r.Row == latestRow[h] && !seen[h]:
-			records = append(records, r)
-			seen[h] = true
-		case r.Row != latestRow[h]:
-			superseded = append(superseded, struct{ row, keptRow int }{r.Row, latestRow[h]})
-		}
-	}
+	records, superseded := partitionLatest(active)
 	if len(records) == 0 {
 		editEphemeral(s, i.Interaction, fmt.Sprintf("Nothing to harvest: all %d candidate(s) are already validated and were left untouched.", validated))
 		return
@@ -152,6 +132,9 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 			editEphemeral(s, i.Interaction, fmt.Sprintf("Could not read <#%s>: %v.\nCheck the Message Content intent and the bot's Read Message History permission.", ch.id, ferr))
 			return
 		}
+		// Per-channel counts so an operator can spot a mis-set channel ID (returns
+		// 0) versus a quiet channel from the logs.
+		log.Printf("harvest: %s channel (%s) returned %d messages", ch.key, ch.id, len(raw))
 		// The submission embeds in #validator-review carry the candidate's Discord
 		// ID in their footer (rowref). Decode them so reviewer @mentions can be
 		// attributed to the right candidate even when usernames differ.
@@ -192,14 +175,17 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 		editEphemeral(s, i.Interaction, "Harvest computed, but writing the Evidence tab failed: "+err.Error())
 		return
 	}
+	writeFailures := 0
 	for _, c := range hf.Candidates {
 		if err := sheet.WriteHarvestColumns(ctx, api, cfg.SheetID, cfg.SheetName, c.Row, c.Signals.RedFlagsCell(), c.Signals.EngagementCell()); err != nil {
 			log.Printf("harvest: write deterministic columns for row %d: %v", c.Row, err)
+			writeFailures++
 		}
 	}
 	for _, sup := range superseded {
 		if err := sheet.MarkDuplicateRow(ctx, api, cfg.SheetID, cfg.SheetName, sup.row, sup.keptRow); err != nil {
 			log.Printf("harvest: mark duplicate row %d: %v", sup.row, err)
+			writeFailures++
 		}
 	}
 
@@ -220,9 +206,13 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	if len(notes) > 0 {
 		skipped = " (" + strings.Join(notes, ", ") + ")"
 	}
+	warning := ""
+	if writeFailures > 0 {
+		warning = fmt.Sprintf("\n\nWarning: %d row(s) failed to write to the tracker (see logs); re-run to retry.", writeFailures)
+	}
 	content := fmt.Sprintf(
-		"Harvest complete: %d candidates%s, %d messages. The Evidence tab and the Red flags / Engagement columns are updated.\n\nNext: run the `competency-digest` skill on the attached `harvest.json`, then `/harvest-import` the resulting `digest.json`.",
-		len(hf.Candidates), skipped, len(messages),
+		"Harvest complete: %d candidates%s, %d messages. The Evidence tab and the Red flags / Engagement columns are updated.%s\n\nNext: run the `competency-digest` skill on the attached `harvest.json`, then `/harvest-import` the resulting `digest.json`.",
+		len(hf.Candidates), skipped, len(messages), warning,
 	)
 	if _, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: &content,
@@ -274,8 +264,34 @@ func handleHarvestImport(s *discordgo.Session, i *discordgo.InteractionCreate, c
 		editEphemeral(s, i.Interaction, "Could not prepare the sheet layout: "+err.Error())
 		return
 	}
-	written, failed := 0, 0
+	// Validate each digest row against the live tracker before writing. A digest
+	// produced from a stale harvest.json (rows shifted since) would otherwise
+	// stamp a readiness verdict onto an unrelated candidate.
+	all, err := sheet.ReadCandidates(ctx, api, cfg.SheetID, cfg.SheetName)
+	if err != nil {
+		editEphemeral(s, i.Interaction, "Could not read the candidate tracker to validate the digest. Check the bot's Sheet access.")
+		return
+	}
+	nameByRow := make(map[int]string, len(all))
+	for _, r := range all {
+		nameByRow[r.Row] = r.Candidate
+	}
+	normName := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+	written, failed, skipped := 0, 0, 0
+	var skipNotes []string
 	for _, c := range digest.Candidates {
+		trackerName, known := nameByRow[c.Row]
+		switch {
+		case !known:
+			skipped++
+			skipNotes = append(skipNotes, fmt.Sprintf("row %d (no candidate on the tracker)", c.Row))
+			continue
+		case normName(c.Candidate) != "" && normName(c.Candidate) != normName(trackerName):
+			skipped++
+			skipNotes = append(skipNotes, fmt.Sprintf("row %d (digest %q vs tracker %q)", c.Row, c.Candidate, trackerName))
+			continue
+		}
 		if err := sheet.WriteDigestColumns(ctx, api, cfg.SheetID, cfg.SheetName, c.Row, c.ReadinessCell(), c.Summary, strings.Join(c.EvidenceLinks, "\n"), c.CriteriaBools()); err != nil {
 			log.Printf("import: write row %d: %v", c.Row, err)
 			failed++
@@ -284,11 +300,56 @@ func handleHarvestImport(s *discordgo.Session, i *discordgo.InteractionCreate, c
 		written++
 	}
 
+	msg := fmt.Sprintf("Imported %d candidate(s).", written)
 	if failed > 0 {
-		editEphemeral(s, i.Interaction, fmt.Sprintf("Imported %d candidate(s); %d failed (see logs).", written, failed))
-		return
+		msg += fmt.Sprintf(" %d failed (see logs).", failed)
 	}
-	editEphemeral(s, i.Interaction, fmt.Sprintf("Imported %d candidate(s). Sort the tracker by Readiness to surface the most complete candidates.", written))
+	if skipped > 0 {
+		msg += fmt.Sprintf(" %d skipped: %s.", skipped, joinCapped(skipNotes, 10))
+	}
+	if failed == 0 && skipped == 0 {
+		msg += " Sort the tracker by Readiness to surface the most complete candidates."
+	}
+	editEphemeral(s, i.Interaction, msg)
+}
+
+// joinCapped joins notes with "; ", showing at most max entries followed by a
+// count of the remainder, so a digest full of mismatches cannot overflow the
+// Discord message limit.
+func joinCapped(notes []string, max int) string {
+	if len(notes) <= max {
+		return strings.Join(notes, "; ")
+	}
+	return strings.Join(notes[:max], "; ") + fmt.Sprintf("; and %d more", len(notes)-max)
+}
+
+type supersededRow struct{ row, keptRow int }
+
+// partitionLatest splits candidates into the rows to evaluate and the superseded
+// duplicates. Within a normalized handle the highest row number wins (a
+// resubmission appends a new row below the old one); rows with no handle are all
+// kept, since there is nothing to dedup them on.
+func partitionLatest(active []sheet.TrackerRow) (records []sheet.TrackerRow, superseded []supersededRow) {
+	latestRow := map[string]int{}
+	for _, r := range active {
+		if h := harvest.NormalizeHandle(r.Discord); h != "" && r.Row > latestRow[h] {
+			latestRow[h] = r.Row
+		}
+	}
+	seen := map[string]bool{}
+	for _, r := range active {
+		h := harvest.NormalizeHandle(r.Discord)
+		switch {
+		case h == "":
+			records = append(records, r)
+		case r.Row == latestRow[h] && !seen[h]:
+			records = append(records, r)
+			seen[h] = true
+		case r.Row != latestRow[h]:
+			superseded = append(superseded, supersededRow{r.Row, latestRow[h]})
+		}
+	}
+	return records, superseded
 }
 
 // fetchRaw pages through a channel's messages newest-first, stopping at `since`
@@ -305,6 +366,8 @@ func fetchRaw(s *discordgo.Session, channelID string, since time.Time, max int) 
 			break
 		}
 		stop := false
+		// Discord returns each before-paginated batch newest-first, so the first
+		// message older than `since` means every later one is older too: stop.
 		for _, m := range batch {
 			if !since.IsZero() && m.Timestamp.Before(since) {
 				stop = true

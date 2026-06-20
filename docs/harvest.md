@@ -37,8 +37,10 @@ feeds PR #4's `-approved` view; the harvest only informs that decision.
 
 - **source tab** (e.g. `Candidates`) — the review interface: A-M intake + N-Y
   assessment, status dropdown/colors, frozen header.
-- **`{source}-approved`** — PR #4's live view of GovDAO-progressing rows (the
-  chosen-validators list; reviewers move candidates here via the Status column).
+- **`{source}-approved`** — a live view of the GovDAO-progressing rows, mirroring
+  every column A-Y (intake plus assessment), so the chosen-validators list carries
+  the readiness, criteria, and red flags too; reviewers move candidates here via
+  the Status column.
 - **`{source}-evidence`** — the raw harvested messages, one per row (audit trail).
 
 ## Flow

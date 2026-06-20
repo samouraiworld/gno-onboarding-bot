@@ -27,8 +27,9 @@ type Config struct {
 	GnoRPCEndpoint           string `yaml:"gno_rpc_endpoint"`
 	GnoWebBaseURL            string `yaml:"gnoweb_base_url"`
 
-	// Harvest pass (optional). HarvestMaxMessages defaults to 2000 per channel;
-	// HarvestSince is an RFC3339 lower bound (empty = all available history).
+	// Harvest pass (optional). HarvestMaxMessages defaults to 2000 per channel
+	// when unset or non-positive; HarvestSince is an RFC3339 lower bound (empty =
+	// all available history).
 	HarvestSince       string    `yaml:"harvest_since"`
 	HarvestMaxMessages int       `yaml:"harvest_max_messages"`
 	HarvestSinceParsed time.Time `yaml:"-"`
@@ -43,7 +44,7 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
-	if cfg.HarvestMaxMessages == 0 {
+	if cfg.HarvestMaxMessages <= 0 {
 		cfg.HarvestMaxMessages = 2000
 	}
 	if cfg.HarvestSince != "" {

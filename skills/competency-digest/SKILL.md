@@ -82,7 +82,9 @@ is never a failure; it is neutral.
 - Never output a verdict, score out of 100, or approve/reject. Two human
   reviewers decide.
 - Never include a secret, even if you think you see one; it is already redacted.
-- Keep `row` exactly as given; `/harvest-import` matches on it.
+- Keep `row` and `candidate` exactly as given for each input candidate. Do not
+  rename, translate, or drop the `candidate`; `/harvest-import` matches on both
+  and skips any row whose `candidate` no longer matches the tracker.
 
 ## Output schema
 

@@ -131,6 +131,68 @@ func TestBuild_MentionByUsername(t *testing.T) {
 	}
 }
 
+func TestBuild_MentionDoesNotPrefixMatch(t *testing.T) {
+	// "@alice2"/"@alice_dev" are other people; they must not attribute to "alice".
+	// Trailing punctuation ("@alice!") must still match.
+	records := []CandidateRecord{{Row: 2, Candidate: "alice", Discord: "@alice"}}
+	messages := []Message{
+		{ChannelKey: ChannelReview, AuthorID: "999", AuthorUsername: "carol",
+			Content: "ping @alice2 and @alice_dev, not @alice.bob either", Timestamp: ts("2026-06-06T11:00:00Z"), Permalink: "p1"},
+		{ChannelKey: ChannelReview, AuthorID: "999", AuthorUsername: "carol",
+			Content: "thanks @alice!", Timestamp: ts("2026-06-06T12:00:00Z"), Permalink: "p2"},
+	}
+	hf := Build("g", ts("2026-06-19T00:00:00Z"), records, messages)
+	got := hf.Candidates[0].ReviewerCtx
+	if len(got) != 1 {
+		t.Fatalf("want only the real mention attributed, got %d: %+v", len(got), got)
+	}
+	if got[0].Permalink != "p2" {
+		t.Errorf("matched the wrong message: %+v", got[0])
+	}
+}
+
+func TestBuild_ValoperStatePropagates(t *testing.T) {
+	// The handler computes the valoper verdict from column K and sets it on the
+	// record; Build must copy it into Signals (the skill reads it from there).
+	records := []CandidateRecord{
+		{Row: 2, Candidate: "alice", Discord: "@alice", ValoperState: StateFound, ValoperDetail: "operator address recorded"},
+	}
+	hf := Build("g", ts("2026-06-19T00:00:00Z"), records, nil)
+	got := hf.Candidates[0].Signals
+	if got.ValoperState != StateFound || got.ValoperDetail != "operator address recorded" {
+		t.Errorf("valoper not propagated into signals: state=%q detail=%q", got.ValoperState, got.ValoperDetail)
+	}
+}
+
+func TestCriteriaBools(t *testing.T) {
+	// Partial map: only setup (index 0) and valoper (index 3) are found; tx is
+	// explicitly not_found; the rest are absent. Pins both the Criteria order and
+	// the "missing/non-found => false" rule that drives checkboxes P-V.
+	c := DigestCandidate{Criteria: map[string]string{
+		"setup":   StateFound,
+		"valoper": StateFound,
+		"tx":      StateNotFound,
+		"ops":     StateNeedsCheck,
+	}}
+	got := c.CriteriaBools()
+	want := []bool{true, false, false, true, false, false, false} // setup,sync,tx,valoper,ops,comms,safety
+	if len(got) != len(Criteria) {
+		t.Fatalf("got %d bools, want %d", len(got), len(Criteria))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("CriteriaBools[%d] (%s) = %v, want %v", i, Criteria[i], got[i], want[i])
+		}
+	}
+}
+
+func TestParseDigest_RejectsDuplicateRows(t *testing.T) {
+	dup := `{"candidates":[{"row":2,"readiness":"High"},{"row":2,"readiness":"Low"}]}`
+	if _, err := ParseDigest([]byte(dup)); err == nil {
+		t.Error("expected error for a digest with two candidates on the same row")
+	}
+}
+
 func TestCells(t *testing.T) {
 	s := Signals{MessageCount: 12, ActiveDays: 5, LastActivity: "2026-06-10T18:00:00Z", SecretLeak: true, SecretLeakKinds: []string{"private_ip", "seed_phrase"}}
 	if got := s.EngagementCell(); got != "12 msgs, 5 days, last 2026-06-10" {

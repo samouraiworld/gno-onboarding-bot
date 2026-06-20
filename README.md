@@ -4,7 +4,7 @@ Go Discord bot that automates the test13 validator onboarding lifecycle: candida
 
 ## Commands
 
-The bot registers six Discord slash commands (see `internal/handlers`):
+The bot registers these Discord commands (see `internal/handlers`):
 
 - `/candidate` — candidate intake
 - `/submit-request` — evidence submission (one Sheet row per call, including resubmissions)
@@ -29,8 +29,8 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
 4. Create or open the Google Sheet:
    - copy its ID from the URL — `https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit...` — into `sheet_id` (the `gid=` query param is the tab ID, unrelated, ignore it)
    - note the exact tab name into `sheet_name` (default `"Candidates"`)
-   - set row 1 to exactly these 12 headers, in order:
-     `Candidate | Discord | Status | Challenge submitted | Reviewers | Missing criteria | Decision date | Valoper link | GovDAO status | Moniker & validator address | Introduction | Review message link`
+   - set row 1 to exactly these 13 headers, in order:
+     `Candidate | Discord | Status | Challenge submitted | Reviewers | Missing criteria | Decision date | Valoper link | GovDAO status | Moniker | Operator address | Introduction | Review message link`
 5. **Share the Sheet** with the service account's `client_email` (the `client_email` field inside `service-account.json`) with **Editor** access. This is the step most likely to be missing — without it, `/candidate-testnet` fails with "Something went wrong recording your application", and the bot's logs (`docker compose logs -f`) will show the exact `googleapi:` error (e.g. `403 PERMISSION_DENIED` if unshared, `404` if `sheet_id` is wrong).
 
 ### Discord application setup
@@ -76,14 +76,14 @@ go run . -config config.yaml
 
 ## Layout
 
-- `main.go` — loads `config.yaml` and `templates.yaml`, connects to Google Sheets, opens the Discord session, registers the six commands.
+- `main.go` — loads `config.yaml` and `templates.yaml`, connects to Google Sheets, opens the Discord session, registers the commands.
 - `internal/config` — `config.yaml` loader/validator.
 - `internal/templates` — loads `templates.yaml` and renders it as Go `text/template`.
 - `internal/forms` — modal input validation helpers.
 - `internal/rowref` — encodes a Sheet row number + Discord candidate ID into short strings threaded through embed footers and modal `custom_id`s.
-- `internal/sheet` — the 12-column Sheet schema and the Google Sheets API client.
+- `internal/sheet` — the Sheet schema (13 intake columns A-M plus the harvest assessment columns N-Y) and the Google Sheets API client.
 - `internal/notify` — builds/parses the `#validator-review` notification embed.
-- `internal/handlers` — the six command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks).
+- `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks).
 
 ## Testing
 
