@@ -1,20 +1,62 @@
+# Copy this file to config.yaml (gitignored) and fill in the values.
+# Discord IDs: turn on Developer Mode (User Settings -> Advanced -> Developer Mode),
+# then right-click the server / channel / role / user and pick "Copy ... ID".
+
+# Developer Portal (discord.com/developers/applications) -> your app -> Bot -> Reset Token.
+# Also turn ON the "Message Content" privileged intent there (required by /harvest).
 discord_token: ""
+
+# Right-click the server icon -> Copy Server ID.
 guild_id: ""
+
+# Right-click the general chat channel -> Copy Channel ID (intake happens here).
 general_chat_channel_id: ""
+
+# Right-click #testnet-onboarding -> Copy Channel ID.
 onboarding_channel_id: ""
+
+# Right-click #validator-review -> Copy Channel ID.
 validator_review_channel_id: ""
+
+# Server Settings -> Roles -> role's "..." menu -> Copy Role ID (Testnet Validator Candidate).
 candidate_role_id: ""
+
+# Same, for the Testnet Validator role.
 validator_role_id: ""
+
+# Same, for the reviewer role (can run /harvest, approve, and the other reviewer commands).
 reviewer_role_id: ""
+
+# Right-click the GovDAO contact user -> Copy User ID (pinged on approval).
 govdao_contact_user_id: ""
+
+# Google Sheets: create a Google Cloud project, enable the Sheets API, make a
+# service account, download its JSON key, then SHARE the Sheet with the service
+# account's client_email as Editor. See the README "Google Cloud / Sheets setup".
+
+# Path to the downloaded service-account JSON key.
 google_credentials_file: "service-account.json"
+
+# From the Sheet URL: docs.google.com/spreadsheets/d/<SHEET_ID>/edit.
 sheet_id: ""
+
+# The tab name (the label at the bottom of the Sheet).
 sheet_name: "Candidates"
+
+# Free text, shown to candidates as the review turnaround.
 review_sla: "5 business days"
-gno_rpc_endpoint: ""   # gno RPC endpoint for test13, e.g. https://rpc.test13.testnets.gno.land
-gnoweb_base_url: ""    # gnoweb base URL, e.g. https://gnoweb.test-13.gnoland.network
+
+# RPC endpoint of the gno chain, used to verify valoper registration on-chain at /submit.
+gno_rpc_endpoint: ""   # e.g. https://rpc.test13.testnets.gno.land
+
+# gnoweb base URL for the same chain, used to build the links shown to candidates and reviewers.
+gnoweb_base_url: ""    # e.g. https://gnoweb.test-13.gnoland.network
 
 # End-of-window harvest (optional, see docs/harvest.md). For /harvest, also enable
-# the privileged Message Content intent and grant Read Message History.
-harvest_since: ""           # RFC3339 lower bound, e.g. "2026-06-01T00:00:00Z"; empty = all history
-harvest_max_messages: 2000  # per-channel message cap
+# the privileged Message Content intent (above) and grant Read Message History.
+
+# RFC3339 lower bound, e.g. "2026-06-01T00:00:00Z"; empty = all history.
+harvest_since: ""
+
+# Per-channel message cap.
+harvest_max_messages: 2000
