@@ -309,48 +309,20 @@ func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheet
 }
 
 // approvedViewFormula builds the spilling array formula for the "-approved"
-// tab. It lists "GovDAO submitted" rows above a divider row above "GovDAO
-// pending" rows, and is robust to either category being empty:
+// tab: a single QUERY selecting both GovDAO statuses, ordered so "GovDAO
+// submitted" rows sort above "GovDAO pending" rows ("submitted" > "pending",
+// so `order by desc`). IFERROR renders "" when neither category has rows.
 //
-//   - QUERY is given headers=0 so it never lifts the first data row into a
-//     header (data-loss bug otherwise, since the source range is data-only).
-//   - COUNTIF gives scalar category counts, so the divider row is shown ONLY
-//     when both categories are non-empty (no stray divider, no #N/A padding).
-//   - When a single category is non-empty its QUERY block is returned as-is;
-//     when both are empty the cell renders "".
-//
-// sep is the locale's function-argument separator ("," or ";"). The QUERY SQL
-// is a single string literal, so it is locale-independent.
+// A single self-spilling QUERY is used deliberately: IFS/VSTACK cannot return a
+// multi-row array from a branch (Sheets raises "IFS range size inconsistent"),
+// so the earlier LET/IFS form errored. headers=0 keeps QUERY from lifting the
+// first data row into a header. sep is the locale's function-argument separator
+// ("," or ";"); the SQL is a single string literal, so it is locale-independent.
 func approvedViewFormula(sourceSheetName, lastCol, statusCol, sep string) string {
-	join := func(args ...string) string { return strings.Join(args, sep+" ") }
-	quote := func(s string) string { return `"` + s + `"` }
-
 	src := fmt.Sprintf("'%s'!A2:%s", sourceSheetName, lastCol)
-	statusRange := fmt.Sprintf("'%s'!%s2:%s", sourceSheetName, statusCol, statusCol)
-
-	query := func(statusVal string) string {
-		sql := quote(fmt.Sprintf("select * where %s = '%s'", statusCol, statusVal))
-		return "IFERROR(QUERY(" + join(src, sql, "0") + ")" + sep + ` "")`
-	}
-	count := func(statusVal string) string {
-		return "COUNTIF(" + join(statusRange, quote(statusVal)) + ")"
-	}
-	divider := "MAKEARRAY(" + join("1", strconv.Itoa(len(Headers)),
-		"LAMBDA("+join("r", "c", quote("───"))+")") + ")"
-
-	ifs := "IFS(" + join(
-		"AND("+join("nS>0", "nP>0")+")", "VSTACK("+join("qs", divider, "qp")+")",
-		"nS>0", "qs",
-		"nP>0", "qp",
-		"TRUE", quote(""),
-	) + ")"
-	return "=LET(" + join(
-		"nS", count(StatusGovDAOSubmitted),
-		"nP", count(StatusGovDAOPending),
-		"qs", query(StatusGovDAOSubmitted),
-		"qp", query(StatusGovDAOPending),
-		ifs,
-	) + ")"
+	sql := fmt.Sprintf(`"select * where %s = '%s' or %s = '%s' order by %s desc"`,
+		statusCol, StatusGovDAOSubmitted, statusCol, StatusGovDAOPending, statusCol)
+	return fmt.Sprintf(`=IFERROR(QUERY(%s%s %s%s 0)%s "")`, src, sep, sql, sep, sep)
 }
 
 func rowIsEmpty(r []interface{}) bool {

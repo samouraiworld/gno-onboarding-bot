@@ -332,35 +332,27 @@ func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
 	if api.setFormulaRange != "Test-approved!A2" {
 		t.Errorf("got formula range %q, want %q", api.setFormulaRange, "Test-approved!A2")
 	}
-	if !strings.Contains(api.setFormulaFormula, "VSTACK(") {
-		t.Errorf("formula missing VSTACK: %s", api.setFormulaFormula)
+	// A single self-spilling QUERY (IFS/VSTACK cannot return a multi-row array).
+	if !strings.Contains(api.setFormulaFormula, "QUERY(") {
+		t.Errorf("formula missing QUERY: %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "GovDAO submitted") {
-		t.Errorf("formula missing GovDAO submitted: %s", api.setFormulaFormula)
+	if strings.Contains(api.setFormulaFormula, "IFS(") || strings.Contains(api.setFormulaFormula, "VSTACK(") {
+		t.Errorf("formula must not use IFS/VSTACK (they can't spill arrays): %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
-		t.Errorf("formula missing GovDAO pending: %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "GovDAO submitted") || !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
+		t.Errorf("formula missing a GovDAO status: %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "MAKEARRAY(1, 13") {
-		t.Errorf("en_US: formula missing MAKEARRAY(1, 13 ...) divider row: %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "order by") {
+		t.Errorf("formula missing 'order by' (submitted above pending): %s", api.setFormulaFormula)
 	}
 	subIdx := strings.Index(api.setFormulaFormula, "GovDAO submitted")
 	penIdx := strings.Index(api.setFormulaFormula, "GovDAO pending")
 	if subIdx < 0 || penIdx < 0 || subIdx >= penIdx {
-		t.Errorf("submitted block must appear before pending block: %s", api.setFormulaFormula)
+		t.Errorf("submitted must appear before pending: %s", api.setFormulaFormula)
 	}
-	// QUERY must pass headers=0 so it never lifts the first data row into a
-	// header row (silent data-loss otherwise on the data-only source range).
+	// QUERY must pass headers=0 so it never lifts the first data row into a header.
 	if !strings.Contains(api.setFormulaFormula, ", 0)") {
 		t.Errorf("QUERY missing explicit headers=0 argument: %s", api.setFormulaFormula)
-	}
-	// Divider must be gated on both categories being non-empty (COUNTIF + IFS),
-	// so an empty category does not surface a stray divider or #N/A padding.
-	if !strings.Contains(api.setFormulaFormula, "COUNTIF(") {
-		t.Errorf("formula missing COUNTIF category counts: %s", api.setFormulaFormula)
-	}
-	if !strings.Contains(api.setFormulaFormula, "IFS(") {
-		t.Errorf("formula missing IFS category gating: %s", api.setFormulaFormula)
 	}
 }
 
