@@ -4,10 +4,11 @@
 
 1. A Discord application + bot user (https://discord.com/developers/applications), invited to the test server with the `applications.commands` and `bot` scopes, and `Manage Roles` + `Send Messages` permissions.
 2. A Google Cloud service account with the Sheets API enabled, its JSON key saved as `service-account.json` (or the path set in `config.yaml`'s `google_credentials_file`).
-3. A Google Sheet shared with the service account's email (Editor access), with exactly these 12 headers in row 1, in this order:
-   `Candidate | Discord | Status | Challenge submitted | Reviewers | Missing criteria | Decision date | Valoper link | GovDAO status | Moniker & validator address | Introduction | Review message link`
+3. A Google Sheet shared with the service account's email (Editor access), with exactly these 13 headers in row 1, in this order:
+   `Candidate | Discord | Status | Challenge submitted | Reviewers | Missing criteria | Decision date | Valoper link | GovDAO status | Moniker | Operator address | Introduction | Review message link`
 4. On the test Discord server: a `Testnet Validator Candidate` role, a `Testnet Validator` role, an `Onboarding Reviewer` role (assigned to your test reviewer account), a `#general-chat`-equivalent channel, a `#testnet-onboarding`-equivalent channel, and a new private `#validator-review` channel visible only to `Onboarding Reviewer`.
 5. `config.yaml` filled in with all the above IDs (copy `config.example.yaml` and fill it in — this file is gitignored).
+6. `gno_rpc_endpoint` set to a reachable test13 RPC URL (e.g. `https://rpc.test13.testnets.gno.land`), and `gnoweb_base_url` set (e.g. `https://gnoweb.test-13.gnoland.network`), in `config.yaml`.
 
 ## Running the bot
 
@@ -17,12 +18,20 @@ go run . -config config.yaml
 
 Expected log output: `bot is running, press Ctrl+C to exit`, with no errors during command registration.
 
+## Restricting commands by channel/role
+
+The bot does not do this itself (Discord rejects bot tokens on the permissions endpoint). After the first run registers the commands, go configure them manually per the README's "Restricting commands to a channel/role" section before running the checklist below — otherwise every command is usable everywhere by everyone, and the "not visible/usable" checks will fail for the wrong reason.
+
 ## Checklist
 
 - [ ] `/candidate-testnet` in the general-chat channel: grants `Testnet Validator Candidate`, creates a new Sheet row (`Status` = `Candidate`), and sends a DM with the exact "Reply to someone asking to become a validator" wording from `Shared.md`.
 - [ ] `/candidate-testnet` is not visible/usable in any other channel.
 - [ ] `/candidate-testnet` run again by the same member: ephemeral notice, no second role grant or Sheet row.
-- [ ] `/submit-request` in the onboarding channel (as the candidate): opens a 3-field modal; submitting it creates a new Sheet row (`Status` = `Challenge in progress`, all fields filled), posts a notification embed in `#validator-review` pinging `Onboarding Reviewer`, and DMs the candidate the exact "Acknowledge a submission" wording with the configured `review_sla`.
+- [ ] `/submit-request` in the onboarding channel (as the candidate): opens a single-field modal asking for the operator address (`g1...`). Pasting a **registered** valoper's address creates a new Sheet row (`Status` = `Challenge in progress`; `Moniker` (J), `Operator address` (K) parsed from the realm; `Valoper link` (H) = the gnoweb profile URL; `Introduction` (L) = the profile description), posts a notification embed in `#validator-review` (Moniker, Operator address, clickable Valoper link, truncated Introduction) pinging `Onboarding Reviewer`, and DMs the candidate the exact "Acknowledge a submission" wording with the configured `review_sla`.
+- [ ] `/submit-request` with a non-address / junk string: ephemeral "not a valid operator address"; no Sheet row.
+- [ ] `/submit-request` with a well-formed but **unregistered** `g1` address: ephemeral "register on r/gnops/valopers first"; no Sheet row.
+- [ ] `/submit-request` with `gno_rpc_endpoint` pointed at an unreachable URL: ephemeral "could not reach the chain"; no Sheet row.
+- [ ] Confirm the live qrender response shape matches `internal/valoper/client.go` (`result.response.ResponseBase.Data`); if a registered address wrongly yields "could not reach the chain" / "could not read your valoper profile", capture the raw RPC response and adjust the struct tags + `client_test.go`.
 - [ ] `/submit-request` is not visible/usable without the `Testnet Validator Candidate` role, or outside the onboarding channel.
 - [ ] `Request missing info` (right-click the notification in `#validator-review`): modal collects a multi-line list; submitting it DMs the candidate the exact "Request missing information" wording with the submitted items as bullets, and updates the Sheet row's `Status` (`Needs retry`), `Missing criteria`, `Decision date`, `Reviewers`.
 - [ ] `Ask to retry`: same shape, with the exact "Ask a candidate to retry" wording and two modal fields.

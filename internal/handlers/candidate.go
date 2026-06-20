@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/bwmarrin/discordgo"
 
@@ -17,12 +18,8 @@ func RegisterCandidate(s *discordgo.Session, cfg *config.Config, api sheet.API, 
 		Description: "Apply to become a test13 validator candidate",
 		Type:        discordgo.ChatApplicationCommand,
 	}
-	created, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd)
-	if err != nil {
+	if _, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd); err != nil {
 		return fmt.Errorf("create candidate-testnet command: %w", err)
-	}
-	if err := restrictCommand(s, cfg.GuildID, created.ID, cfg.GeneralChatChannelID, ""); err != nil {
-		return fmt.Errorf("restrict candidate-testnet command: %w", err)
 	}
 
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -51,11 +48,13 @@ func handleCandidateTestnet(s *discordgo.Session, i *discordgo.InteractionCreate
 		Status:    sheet.StatusCandidate,
 	}
 	if _, err := sheet.AppendCandidateRow(context.Background(), api, cfg.SheetID, cfg.SheetName, row); err != nil {
+		log.Printf("candidate-testnet: append candidate row for %s: %v", member.User.ID, err)
 		editEphemeral(s, i.Interaction, "Something went wrong recording your application. Please try again or contact a team member.")
 		return
 	}
 
 	if err := s.GuildMemberRoleAdd(cfg.GuildID, member.User.ID, cfg.CandidateRoleID); err != nil {
+		log.Printf("candidate-testnet: add candidate role for %s: %v", member.User.ID, err)
 		editEphemeral(s, i.Interaction, "Something went wrong assigning your role. Please contact a team member.")
 		return
 	}

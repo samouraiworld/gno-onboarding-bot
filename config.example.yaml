@@ -11,3 +11,5 @@ google_credentials_file: "service-account.json"
 sheet_id: ""
 sheet_name: "Candidates"
 review_sla: "5 business days"
+gno_rpc_endpoint: ""   # gno RPC endpoint for test13, e.g. https://rpc.test13.testnets.gno.land
+gnoweb_base_url: ""    # gnoweb base URL, e.g. https://gnoweb.test-13.gnoland.network

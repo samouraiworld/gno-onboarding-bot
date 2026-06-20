@@ -9,19 +9,31 @@ import (
 )
 
 const (
-	FieldMonikerAddress = "Moniker & validator address"
-	FieldValoperLink    = "Valoper link"
-	FieldIntroduction   = "Introduction"
+	FieldMoniker         = "Moniker"
+	FieldOperatorAddress = "Operator address"
+	FieldValoperLink     = "Valoper link"
+	FieldIntroduction    = "Introduction"
 )
 
-func BuildSubmissionEmbed(row int, candidateID, monikerAddress, valoperLink, introduction string) *discordgo.MessageEmbed {
+const embedFieldMax = 1024
+
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
+}
+
+func BuildSubmissionEmbed(row int, candidateID, moniker, operatorAddr, valoperLink, introduction string) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       "New validator submission",
 		Description: fmt.Sprintf("From <@%s>", candidateID),
 		Fields: []*discordgo.MessageEmbedField{
-			{Name: FieldMonikerAddress, Value: monikerAddress},
+			{Name: FieldMoniker, Value: moniker},
+			{Name: FieldOperatorAddress, Value: operatorAddr},
 			{Name: FieldValoperLink, Value: valoperLink},
-			{Name: FieldIntroduction, Value: introduction},
+			{Name: FieldIntroduction, Value: truncateRunes(introduction, embedFieldMax)},
 		},
 		Footer: &discordgo.MessageEmbedFooter{Text: rowref.Encode(row, candidateID)},
 	}

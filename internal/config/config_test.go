@@ -31,6 +31,8 @@ google_credentials_file: "creds.json"
 sheet_id: "sheet-id"
 sheet_name: "Candidates"
 review_sla: "5 business days"
+gno_rpc_endpoint: "https://rpc.example:443"
+gnoweb_base_url: "https://gnoweb.example"
 `
 
 func TestLoad_Valid(t *testing.T) {
@@ -44,6 +46,12 @@ func TestLoad_Valid(t *testing.T) {
 	}
 	if cfg.SheetName != "Candidates" {
 		t.Errorf("SheetName = %q, want %q", cfg.SheetName, "Candidates")
+	}
+	if cfg.GnoRPCEndpoint != "https://rpc.example:443" {
+		t.Errorf("GnoRPCEndpoint = %q", cfg.GnoRPCEndpoint)
+	}
+	if cfg.GnoWebBaseURL != "https://gnoweb.example" {
+		t.Errorf("GnoWebBaseURL = %q", cfg.GnoWebBaseURL)
 	}
 }
 

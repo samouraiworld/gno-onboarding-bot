@@ -14,6 +14,7 @@ import (
 	"onboardingbot/internal/handlers"
 	"onboardingbot/internal/sheet"
 	"onboardingbot/internal/templates"
+	"onboardingbot/internal/valoper"
 )
 
 func main() {
@@ -35,6 +36,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("create sheets client: %v", err)
 	}
+	if err := sheet.Ensure(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure sheet tab/headers: %v", err)
+	}
 
 	s, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
@@ -42,14 +46,19 @@ func main() {
 	}
 	s.Identify.Intents = discordgo.IntentsGuilds
 
+	ready := make(chan struct{})
+	s.AddHandlerOnce(func(s *discordgo.Session, r *discordgo.Ready) {
+		close(ready)
+	})
+
 	if err := s.Open(); err != nil {
 		log.Fatalf("open discord session: %v", err)
 	}
 	defer s.Close()
+	<-ready
 
 	registrations := []func(*discordgo.Session, *config.Config, sheet.API, *templates.Templates) error{
 		handlers.RegisterCandidate,
-		handlers.RegisterSubmit,
 		handlers.RegisterRequestMissingInfo,
 		handlers.RegisterAskToRetry,
 		handlers.RegisterEscalateToCall,
@@ -59,6 +68,11 @@ func main() {
 		if err := register(s, cfg, sheetsClient, tpl); err != nil {
 			log.Fatalf("register command: %v", err)
 		}
+	}
+
+	renderer := valoper.NewClient(cfg.GnoRPCEndpoint)
+	if err := handlers.RegisterSubmit(s, cfg, sheetsClient, tpl, renderer); err != nil {
+		log.Fatalf("register submit command: %v", err)
 	}
 
 	log.Println("bot is running, press Ctrl+C to exit")

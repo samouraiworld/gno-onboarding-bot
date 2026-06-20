@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -22,12 +23,8 @@ func RegisterEscalateToCall(s *discordgo.Session, cfg *config.Config, api sheet.
 		Name: "Escalate to call",
 		Type: discordgo.MessageApplicationCommand,
 	}
-	created, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd)
-	if err != nil {
+	if _, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd); err != nil {
 		return fmt.Errorf("create Escalate to call command: %w", err)
-	}
-	if err := restrictCommand(s, cfg.GuildID, created.ID, cfg.ValidatorReviewChannelID, cfg.ReviewerRoleID); err != nil {
-		return fmt.Errorf("restrict Escalate to call command: %w", err)
 	}
 
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -93,12 +90,14 @@ func finalizeEscalate(s *discordgo.Session, i *discordgo.InteractionCreate, cfg 
 	slots := forms.SplitLines(slotsRaw)
 	message, err := tpl.EscalateToCall(topic, strings.Join(slots, ", "), scope)
 	if err != nil {
+		log.Printf("escalate-to-call: render template: %v", err)
 		editEphemeral(s, i.Interaction, "Could not render the message template. Please contact a team member.")
 		return
 	}
 	if err := sheet.UpdateFields(context.Background(), api, cfg.SheetID, cfg.SheetName, row, map[sheet.Column]string{
 		sheet.ColumnReviewers: i.Member.User.Username,
 	}); err != nil {
+		log.Printf("escalate-to-call: update tracker for row %d: %v", row, err)
 		editEphemeral(s, i.Interaction, "Could not update the tracker. Please try again.")
 		return
 	}
