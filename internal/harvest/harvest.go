@@ -304,7 +304,11 @@ func mentions(r CandidateRecord, norm, content string) bool {
 			return true
 		}
 	}
-	return norm != "" && strings.Contains(normalizeUsername(content), "@"+norm)
+	// Match "@handle" anywhere in the lowercased message. Do NOT run the whole
+	// message through normalizeUsername: that strips a leading "@" and truncates
+	// at the first "#", which would drop a leading mention or any mention after a
+	// "#" (channel refs, hashtags).
+	return norm != "" && strings.Contains(strings.ToLower(content), "@"+norm)
 }
 
 // NormalizeHandle normalizes a Discord handle for comparison (lowercased,

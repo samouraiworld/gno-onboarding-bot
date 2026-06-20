@@ -116,6 +116,21 @@ func TestBuild_MatchByUsernameWhenNoID(t *testing.T) {
 	}
 }
 
+func TestBuild_MentionByUsername(t *testing.T) {
+	// alice has no resolved ID, so reviewer mentions must match by @username.
+	records := []CandidateRecord{{Row: 2, Candidate: "alice", Discord: "@alice"}}
+	messages := []Message{
+		// Leading @mention AND a later "#": the old normalizeUsername(content) path
+		// dropped both (stripped the leading @, truncated at #).
+		{ChannelKey: ChannelReview, AuthorID: "999", AuthorUsername: "carol",
+			Content: "@alice please retry, see #testnet-onboarding", Timestamp: ts("2026-06-06T11:00:00Z"), Permalink: "p"},
+	}
+	hf := Build("g", ts("2026-06-19T00:00:00Z"), records, messages)
+	if len(hf.Candidates[0].ReviewerCtx) != 1 {
+		t.Errorf("leading @mention with a later # was not attributed: %+v", hf.Candidates[0].ReviewerCtx)
+	}
+}
+
 func TestCells(t *testing.T) {
 	s := Signals{MessageCount: 12, ActiveDays: 5, LastActivity: "2026-06-10T18:00:00Z", SecretLeak: true, SecretLeakKinds: []string{"private_ip", "seed_phrase"}}
 	if got := s.EngagementCell(); got != "12 msgs, 5 days, last 2026-06-10" {
