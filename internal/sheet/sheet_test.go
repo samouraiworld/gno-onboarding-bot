@@ -253,6 +253,24 @@ func TestUpdateFields(t *testing.T) {
 	}
 }
 
+func TestClearRow(t *testing.T) {
+	api := &fakeAPI{}
+	if err := ClearRow(context.Background(), api, "sheet-id", "Test", 7); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.updateRowRange != "Test!A7:M7" {
+		t.Errorf("got range %q, want %q", api.updateRowRange, "Test!A7:M7")
+	}
+	if len(api.updateRowValues) != len(Headers) {
+		t.Fatalf("got %d values, want %d", len(api.updateRowValues), len(Headers))
+	}
+	for i, v := range api.updateRowValues {
+		if v != "" {
+			t.Errorf("value[%d] = %v, want empty", i, v)
+		}
+	}
+}
+
 func TestEnsure_WritesHeadersWhenEmpty(t *testing.T) {
 	api := &fakeAPI{getResult: nil} // empty row 1
 	if err := Ensure(context.Background(), api, "sheet-id", "Test"); err != nil {
@@ -302,6 +320,19 @@ func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
 	penIdx := strings.Index(api.setFormulaFormula, "GovDAO pending")
 	if subIdx < 0 || penIdx < 0 || subIdx >= penIdx {
 		t.Errorf("submitted block must appear before pending block: %s", api.setFormulaFormula)
+	}
+	// QUERY must pass headers=0 so it never lifts the first data row into a
+	// header row (silent data-loss otherwise on the data-only source range).
+	if !strings.Contains(api.setFormulaFormula, ", 0)") {
+		t.Errorf("QUERY missing explicit headers=0 argument: %s", api.setFormulaFormula)
+	}
+	// Divider must be gated on both categories being non-empty (COUNTIF + IFS),
+	// so an empty category does not surface a stray divider or #N/A padding.
+	if !strings.Contains(api.setFormulaFormula, "COUNTIF(") {
+		t.Errorf("formula missing COUNTIF category counts: %s", api.setFormulaFormula)
+	}
+	if !strings.Contains(api.setFormulaFormula, "IFS(") {
+		t.Errorf("formula missing IFS category gating: %s", api.setFormulaFormula)
 	}
 }
 

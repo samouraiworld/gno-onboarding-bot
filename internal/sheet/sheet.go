@@ -170,17 +170,6 @@ func ApplyStatusDropdown(ctx context.Context, api API, spreadsheetID, sheetName 
 	return api.SetDropdown(ctx, spreadsheetID, sheetName, ColumnStatus, 2, row, AllStatuses)
 }
 
-// FormulaArgSep returns the function-argument separator the given spreadsheet
-// locale expects. Wrapper around the package-private helper so callers outside
-// the package can pre-compute the separator at startup.
-func FormulaArgSep(locale string) string { return formulaArgSep(locale) }
-
-// DiscordHyperlinkFormula builds a HYPERLINK formula pointing to a Discord
-// user, using the given argument separator. Display text is "@username".
-func DiscordHyperlinkFormula(userID, username, sep string) string {
-	return fmt.Sprintf(`=HYPERLINK("https://discord.com/users/%s"%s "@%s")`, userID, sep, username)
-}
-
 // formulaArgSep returns the function-argument separator the given spreadsheet
 // locale expects. Locales whose decimal separator is "," (most of Europe and
 // Latin America) require ";" between function args; comma-decimal locales
@@ -262,27 +251,56 @@ func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheet
 	}
 	sep := formulaArgSep(locale)
 	formulaCellRange := fmt.Sprintf("%s!A2", tab)
-	statusCol := columnLetter(ColumnStatus)
-	// Stack two QUERY blocks with a row of dashes between, so reviewers see
-	// "GovDAO submitted" rows ABOVE a visible separator above the "GovDAO
-	// pending" rows. Each QUERY is wrapped in IFERROR so an empty side does
-	// not break VSTACK with #N/A. MAKEARRAY+LAMBDA build the divider row
-	// without using locale-sensitive array-literal syntax. Only the outer
-	// function-call separator depends on the spreadsheet locale.
-	qSubmitted := fmt.Sprintf(`QUERY('%s'!A2:%s%s "select * where %s = '%s'")`,
-		sourceSheetName, lastCol, sep, statusCol, StatusGovDAOSubmitted)
-	qPending := fmt.Sprintf(`QUERY('%s'!A2:%s%s "select * where %s = '%s'")`,
-		sourceSheetName, lastCol, sep, statusCol, StatusGovDAOPending)
-	divider := fmt.Sprintf(`MAKEARRAY(1%s %d%s LAMBDA(r%s c%s "───"))`,
-		sep, len(Headers), sep, sep, sep)
-	sub := fmt.Sprintf(`IFERROR(%s%s "")`, qSubmitted, sep)
-	pen := fmt.Sprintf(`IFERROR(%s%s "")`, qPending, sep)
-	formula := fmt.Sprintf(`=IFERROR(VSTACK(%s%s %s%s %s)%s "")`,
-		sub, sep, divider, sep, pen, sep)
+	formula := approvedViewFormula(sourceSheetName, lastCol, columnLetter(ColumnStatus), sep)
 	if err := api.SetFormula(ctx, spreadsheetID, formulaCellRange, formula); err != nil {
-		return fmt.Errorf("write FILTER formula to %q: %w", tab, err)
+		return fmt.Errorf("write approved-view formula to %q: %w", tab, err)
 	}
 	return nil
+}
+
+// approvedViewFormula builds the spilling array formula for the "-approved"
+// tab. It lists "GovDAO submitted" rows above a divider row above "GovDAO
+// pending" rows, and is robust to either category being empty:
+//
+//   - QUERY is given headers=0 so it never lifts the first data row into a
+//     header (data-loss bug otherwise, since the source range is data-only).
+//   - COUNTIF gives scalar category counts, so the divider row is shown ONLY
+//     when both categories are non-empty (no stray divider, no #N/A padding).
+//   - When a single category is non-empty its QUERY block is returned as-is;
+//     when both are empty the cell renders "".
+//
+// sep is the locale's function-argument separator ("," or ";"). The QUERY SQL
+// is a single string literal, so it is locale-independent.
+func approvedViewFormula(sourceSheetName, lastCol, statusCol, sep string) string {
+	join := func(args ...string) string { return strings.Join(args, sep+" ") }
+	quote := func(s string) string { return `"` + s + `"` }
+
+	src := fmt.Sprintf("'%s'!A2:%s", sourceSheetName, lastCol)
+	statusRange := fmt.Sprintf("'%s'!%s2:%s", sourceSheetName, statusCol, statusCol)
+
+	query := func(statusVal string) string {
+		sql := quote(fmt.Sprintf("select * where %s = '%s'", statusCol, statusVal))
+		return "IFERROR(QUERY(" + join(src, sql, "0") + ")" + sep + ` "")`
+	}
+	count := func(statusVal string) string {
+		return "COUNTIF(" + join(statusRange, quote(statusVal)) + ")"
+	}
+	divider := "MAKEARRAY(" + join("1", strconv.Itoa(len(Headers)),
+		"LAMBDA("+join("r", "c", quote("───"))+")") + ")"
+
+	ifs := "IFS(" + join(
+		"AND("+join("nS>0", "nP>0")+")", "VSTACK("+join("qs", divider, "qp")+")",
+		"nS>0", "qs",
+		"nP>0", "qp",
+		"TRUE", quote(""),
+	) + ")"
+	return "=LET(" + join(
+		"nS", count(StatusGovDAOSubmitted),
+		"nP", count(StatusGovDAOPending),
+		"qs", query(StatusGovDAOSubmitted),
+		"qp", query(StatusGovDAOPending),
+		ifs,
+	) + ")"
 }
 
 func rowIsEmpty(r []interface{}) bool {
@@ -325,6 +343,19 @@ func AppendCandidateRow(ctx context.Context, api API, spreadsheetID, sheetName s
 	return target, nil
 }
 
+// ClearRow blanks every column (A:M) of the given 1-based row. Used to roll
+// back a just-appended row when a later step of the same submission fails, so
+// the candidate can resubmit cleanly instead of being blocked by the row they
+// could not finish.
+func ClearRow(ctx context.Context, api API, spreadsheetID, sheetName string, row int) error {
+	rangeA1 := fmt.Sprintf("%s!A%d:%s%d", sheetName, row, columnLetter(Column(len(Headers)-1)), row)
+	blank := make([]interface{}, len(Headers))
+	for i := range blank {
+		blank[i] = ""
+	}
+	return api.UpdateRow(ctx, spreadsheetID, rangeA1, blank)
+}
+
 // FindByOperatorAddress scans the data band of sheetName for a row whose
 // operator-address column matches addr. Returns the row number (1-based) and
 // the row's status (col C). If no match, returns 0 and "".
@@ -334,16 +365,17 @@ func FindByOperatorAddress(ctx context.Context, api API, spreadsheetID, sheetNam
 	if err != nil {
 		return 0, "", fmt.Errorf("scan for duplicate: %w", err)
 	}
+	want := strings.TrimSpace(addr)
 	for i, row := range data {
 		if int(ColumnOperatorAddress) >= len(row) {
 			continue
 		}
-		if fmt.Sprint(row[ColumnOperatorAddress]) != addr {
+		if strings.TrimSpace(fmt.Sprint(row[ColumnOperatorAddress])) != want {
 			continue
 		}
 		status := ""
 		if int(ColumnStatus) < len(row) {
-			status = fmt.Sprint(row[ColumnStatus])
+			status = strings.TrimSpace(fmt.Sprint(row[ColumnStatus]))
 		}
 		return i + 2, status, nil
 	}

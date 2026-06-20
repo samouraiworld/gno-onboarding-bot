@@ -233,7 +233,13 @@ func (c *GoogleSheetsClient) SetStatusColors(ctx context.Context, spreadsheetID,
 			},
 		})
 	}
-	for status, hex := range mapping {
+	// Iterate AllStatuses (a stable ordered slice) rather than ranging the map,
+	// so the conditional-format rule priority is deterministic across runs.
+	for _, status := range AllStatuses {
+		hex, ok := mapping[status]
+		if !ok {
+			continue
+		}
 		r, g, b := hexToRGB(hex)
 		requests = append(requests, &sheets.Request{
 			AddConditionalFormatRule: &sheets.AddConditionalFormatRuleRequest{
