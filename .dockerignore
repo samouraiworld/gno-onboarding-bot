@@ -2,3 +2,6 @@
 config.yaml
 service-account.json
 *.env
+*.local.yaml
+*.pem
+*.key
