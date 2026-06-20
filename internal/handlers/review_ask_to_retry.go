@@ -33,7 +33,7 @@ func RegisterAskToRetry(s *discordgo.Session, cfg *config.Config, api sheet.API,
 			if i.ApplicationCommandData().Name != "Ask to retry" {
 				return
 			}
-			showAskToRetryModal(s, i)
+			showAskToRetryModal(s, i, cfg)
 		case discordgo.InteractionModalSubmit:
 			action, row, candidateID, err := rowref.DecodeCustomID(i.ModalSubmitData().CustomID)
 			if err != nil || action != actionAskToRetry {
@@ -45,7 +45,11 @@ func RegisterAskToRetry(s *discordgo.Session, cfg *config.Config, api sheet.API,
 	return nil
 }
 
-func showAskToRetryModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func showAskToRetryModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
+	if !hasRole(i.Member, cfg.ReviewerRoleID) {
+		respondError(s, i.Interaction, "You need the reviewer role to use this command.")
+		return
+	}
 	data := i.ApplicationCommandData()
 	msg, ok := data.Resolved.Messages[data.TargetID]
 	if !ok {
