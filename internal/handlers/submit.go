@@ -50,9 +50,9 @@ func showSubmitModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *
 		return
 	}
 	err := showModal(s, i.Interaction, actionSubmit, "Submit your validator evidence", []*discordgo.TextInput{
-		{CustomID: "moniker_address", Label: "Moniker and validator address", Style: discordgo.TextInputShort, Required: true},
-		{CustomID: "valoper_link", Label: "Public Valoper profile link", Style: discordgo.TextInputShort, Required: true},
-		{CustomID: "introduction", Label: "Short introduction", Style: discordgo.TextInputParagraph, Required: true},
+		{CustomID: "moniker_address", Label: "Moniker and validator address", Style: discordgo.TextInputShort, Required: true, MaxLength: 256},
+		{CustomID: "valoper_link", Label: "Public Valoper profile link", Style: discordgo.TextInputShort, Required: true, MaxLength: 256},
+		{CustomID: "introduction", Label: "Short introduction", Style: discordgo.TextInputParagraph, Required: true, MaxLength: 1000},
 	})
 	if err != nil {
 		respondError(s, i.Interaction, "Could not open the form. Please try again.")

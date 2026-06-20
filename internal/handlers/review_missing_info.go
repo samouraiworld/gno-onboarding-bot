@@ -33,7 +33,7 @@ func RegisterRequestMissingInfo(s *discordgo.Session, cfg *config.Config, api sh
 			if i.ApplicationCommandData().Name != "Request missing info" {
 				return
 			}
-			showRequestMissingInfoModal(s, i)
+			showRequestMissingInfoModal(s, i, cfg)
 		case discordgo.InteractionModalSubmit:
 			action, row, candidateID, err := rowref.DecodeCustomID(i.ModalSubmitData().CustomID)
 			if err != nil || action != actionMissingInfo {
@@ -45,7 +45,11 @@ func RegisterRequestMissingInfo(s *discordgo.Session, cfg *config.Config, api sh
 	return nil
 }
 
-func showRequestMissingInfoModal(s *discordgo.Session, i *discordgo.InteractionCreate) {
+func showRequestMissingInfoModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
+	if !hasRole(i.Member, cfg.ReviewerRoleID) {
+		respondError(s, i.Interaction, "You need the reviewer role to use this command.")
+		return
+	}
 	data := i.ApplicationCommandData()
 	msg, ok := data.Resolved.Messages[data.TargetID]
 	if !ok {

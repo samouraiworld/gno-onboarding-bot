@@ -32,6 +32,10 @@ func RegisterApprove(s *discordgo.Session, cfg *config.Config, api sheet.API, tp
 }
 
 func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config, api sheet.API, tpl *templates.Templates) {
+	if !hasRole(i.Member, cfg.ReviewerRoleID) {
+		respondError(s, i.Interaction, "You need the reviewer role to use this command.")
+		return
+	}
 	if err := deferEphemeral(s, i.Interaction); err != nil {
 		return
 	}
@@ -78,7 +82,10 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	dmFailed := sendDM(s, candidateID, message) != nil
 
 	govDAOMessage := fmt.Sprintf("<@%s> please validate this candidate's entry into the active set via GovDAO. Valoper: %s", cfg.GovDAOContactUserID, valoperLink)
-	_, govDAOErr := s.ChannelMessageSend(cfg.ValidatorReviewChannelID, govDAOMessage)
+	_, govDAOErr := s.ChannelMessageSendComplex(cfg.ValidatorReviewChannelID, &discordgo.MessageSend{
+		Content:         govDAOMessage,
+		AllowedMentions: &discordgo.MessageAllowedMentions{Users: []string{cfg.GovDAOContactUserID}},
+	})
 	govDAOFailed := govDAOErr != nil
 
 	if !dmFailed && !govDAOFailed {
