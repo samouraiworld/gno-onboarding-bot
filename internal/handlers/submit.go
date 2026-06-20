@@ -104,6 +104,14 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 
 	valoperLink := valoper.ProfileURL(cfg.GnoWebBaseURL, operatorAddr)
 
+	if existingRow, existingStatus, dupErr := sheet.FindByOperatorAddress(context.Background(), api, cfg.SheetID, cfg.SheetName, operatorAddr); dupErr != nil {
+		log.Printf("submit: duplicate lookup for %s failed: %v", operatorAddr, dupErr)
+	} else if existingRow > 0 && existingStatus != sheet.StatusNeedsRetry {
+		log.Printf("submit: duplicate addr=%s row=%d status=%q", operatorAddr, existingRow, existingStatus)
+		editEphemeral(s, i.Interaction, fmt.Sprintf("This operator address is already in the tracker (row %d, status %q). If a reviewer asked you to retry, wait for that row to be marked %q before resubmitting.", existingRow, existingStatus, sheet.StatusNeedsRetry))
+		return
+	}
+
 	row := sheet.CandidateRow{
 		Candidate:          i.Member.User.Username,
 		Discord:            "@" + i.Member.User.Username,
@@ -121,6 +129,13 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 		return
 	}
 	log.Printf("submit: OK user=%s moniker=%q row=%d", i.Member.User.Username, moniker, rowNumber)
+
+	if err := api.SetLinkedText(context.Background(), cfg.SheetID, cfg.SheetName, rowNumber, int(sheet.ColumnDiscord), "@"+i.Member.User.Username, "https://discord.com/users/"+candidateID); err != nil {
+		log.Printf("submit: set Discord hyperlink for row %d: %v", rowNumber, err)
+	}
+	if err := sheet.ApplyStatusDropdown(context.Background(), api, cfg.SheetID, cfg.SheetName, rowNumber); err != nil {
+		log.Printf("submit: extend status dropdown to row %d: %v", rowNumber, err)
+	}
 
 	embed := notify.BuildSubmissionEmbed(rowNumber, candidateID, moniker, operatorAddr, valoperLink, description)
 	notifMsg, err := s.ChannelMessageSendComplex(cfg.ValidatorReviewChannelID, &discordgo.MessageSend{

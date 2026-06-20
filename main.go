@@ -39,6 +39,21 @@ func main() {
 	if err := sheet.Ensure(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure sheet tab/headers: %v", err)
 	}
+	if err := sheet.EnsureApprovedView(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure approved-view tab: %v", err)
+	}
+	if err := sheet.EnsureStatusDropdown(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure status dropdown: %v", err)
+	}
+	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure status colors: %v", err)
+	}
+	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure frozen header (source): %v", err)
+	}
+	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
+		log.Fatalf("ensure frozen header (approved): %v", err)
+	}
 
 	s, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {

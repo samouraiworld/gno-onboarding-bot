@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 type Column int
@@ -37,6 +38,7 @@ const (
 	StatusNeedsRetry          = "Needs retry"
 	StatusApproved            = "Approved"
 	StatusGovDAOPending       = "GovDAO pending"
+	StatusGovDAOSubmitted     = "GovDAO submitted"
 )
 
 type CandidateRow struct {
@@ -101,7 +103,103 @@ type API interface {
 	Update(ctx context.Context, spreadsheetID, rangeA1, value string) error
 	Get(ctx context.Context, spreadsheetID, rangeA1 string) ([][]interface{}, error)
 	UpdateRow(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) error
+	SetFormula(ctx context.Context, spreadsheetID, rangeA1, formula string) error
 	EnsureTab(ctx context.Context, spreadsheetID, sheetName string) (created bool, err error)
+	SpreadsheetLocale(ctx context.Context, spreadsheetID string) (string, error)
+	SetDropdown(ctx context.Context, spreadsheetID, sheetName string, col Column, startRow, endRow int, values []string) error
+	SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error
+	SetStatusColors(ctx context.Context, spreadsheetID, sheetName string, statusCol Column, mapping map[string]string) error
+	FreezeHeaderRow(ctx context.Context, spreadsheetID, sheetName string) error
+}
+
+// StatusColors maps each status to a light hex background color used by
+// EnsureStatusColors.
+var StatusColors = map[string]string{
+	StatusCandidate:           "#e0e0e0",
+	StatusChallengeInProgress: "#fff2a8",
+	StatusNeedsRetry:          "#fcd5b4",
+	StatusApproved:            "#c2eebc",
+	StatusGovDAOPending:       "#b6d7f5",
+	StatusGovDAOSubmitted:     "#d9c4ec",
+}
+
+// EnsureStatusColors installs the status-row coloring rules on sheetName.
+func EnsureStatusColors(ctx context.Context, api API, spreadsheetID, sheetName string) error {
+	return api.SetStatusColors(ctx, spreadsheetID, sheetName, ColumnStatus, StatusColors)
+}
+
+// EnsureFrozenHeader freezes the first row of sheetName so it stays visible
+// while scrolling.
+func EnsureFrozenHeader(ctx context.Context, api API, spreadsheetID, sheetName string) error {
+	return api.FreezeHeaderRow(ctx, spreadsheetID, sheetName)
+}
+
+// AllStatuses lists the canonical status values used as the source for the
+// column-C dropdown on the source tab.
+var AllStatuses = []string{
+	StatusCandidate,
+	StatusChallengeInProgress,
+	StatusNeedsRetry,
+	StatusApproved,
+	StatusGovDAOPending,
+	StatusGovDAOSubmitted,
+}
+
+// EnsureStatusDropdown installs the dropdown on column C, sized to the
+// current data band so empty rows don't show the dropdown arrow.
+func EnsureStatusDropdown(ctx context.Context, api API, spreadsheetID, sheetName string) error {
+	dataRange := fmt.Sprintf("%s!A2:A", sheetName)
+	data, err := api.Get(ctx, spreadsheetID, dataRange)
+	if err != nil {
+		return fmt.Errorf("scan column A to size dropdown: %w", err)
+	}
+	if len(data) == 0 {
+		return nil
+	}
+	endRow := 1 + len(data) // 1-based, inclusive
+	return api.SetDropdown(ctx, spreadsheetID, sheetName, ColumnStatus, 2, endRow, AllStatuses)
+}
+
+// ApplyStatusDropdown extends the column-C dropdown so it covers rows 2..row
+// inclusive. Call after writing a new row so the new row shows the dropdown
+// without restarting the bot.
+func ApplyStatusDropdown(ctx context.Context, api API, spreadsheetID, sheetName string, row int) error {
+	if row < 2 {
+		return nil
+	}
+	return api.SetDropdown(ctx, spreadsheetID, sheetName, ColumnStatus, 2, row, AllStatuses)
+}
+
+// FormulaArgSep returns the function-argument separator the given spreadsheet
+// locale expects. Wrapper around the package-private helper so callers outside
+// the package can pre-compute the separator at startup.
+func FormulaArgSep(locale string) string { return formulaArgSep(locale) }
+
+// DiscordHyperlinkFormula builds a HYPERLINK formula pointing to a Discord
+// user, using the given argument separator. Display text is "@username".
+func DiscordHyperlinkFormula(userID, username, sep string) string {
+	return fmt.Sprintf(`=HYPERLINK("https://discord.com/users/%s"%s "@%s")`, userID, sep, username)
+}
+
+// formulaArgSep returns the function-argument separator the given spreadsheet
+// locale expects. Locales whose decimal separator is "," (most of Europe and
+// Latin America) require ";" between function args; comma-decimal locales
+// (en_*, ja_*, ko_*, zh_*, etc.) use ",". Google Sheets does NOT auto-translate
+// formulas written through the API, so we must format with the right separator.
+func formulaArgSep(locale string) string {
+	commaArgPrefixes := []string{"en", "ja", "ko", "zh", "th", "id", "ms", "vi", "tl", "hi"}
+	for _, p := range commaArgPrefixes {
+		if strings.HasPrefix(locale, p+"_") || locale == p {
+			return ","
+		}
+	}
+	return ";"
+}
+
+// ApprovedTabName returns the name of the live-filtered tab that mirrors the
+// source tab's rows whose status is "GovDAO pending".
+func ApprovedTabName(sourceSheetName string) string {
+	return sourceSheetName + "-approved"
 }
 
 // Ensure makes sure the named tab exists in the spreadsheet and that row 1
@@ -126,6 +224,63 @@ func Ensure(ctx context.Context, api API, spreadsheetID, sheetName string) error
 	}
 	if err := api.UpdateRow(ctx, spreadsheetID, headerRange, values); err != nil {
 		return fmt.Errorf("write header row: %w", err)
+	}
+	return nil
+}
+
+// EnsureApprovedView creates the "{source}-approved" tab if missing and
+// populates it with the column headers plus a live FILTER formula that mirrors
+// the source tab's rows whose status is StatusGovDAOPending. Safe to call
+// multiple times; only writes when cells are empty.
+func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheetName string) error {
+	tab := ApprovedTabName(sourceSheetName)
+	if _, err := api.EnsureTab(ctx, spreadsheetID, tab); err != nil {
+		return fmt.Errorf("ensure tab %q: %w", tab, err)
+	}
+	lastCol := columnLetter(Column(len(Headers) - 1))
+	headerRange := fmt.Sprintf("%s!A1:%s1", tab, lastCol)
+	row1, err := api.Get(ctx, spreadsheetID, headerRange)
+	if err != nil {
+		return fmt.Errorf("read header row of %q: %w", tab, err)
+	}
+	if len(row1) == 0 || rowIsEmpty(row1[0]) {
+		values := make([]interface{}, len(Headers))
+		for i, h := range Headers {
+			values[i] = h
+		}
+		if err := api.UpdateRow(ctx, spreadsheetID, headerRange, values); err != nil {
+			return fmt.Errorf("write headers to %q: %w", tab, err)
+		}
+	}
+	// Always rewrite the FILTER formula. Idempotent on the happy path; on the
+	// unhappy path (cell holds a locale-broken formula whose rendered value
+	// reads as "#ERROR!", i.e. non-empty), a skip check would prevent the fix
+	// from ever applying.
+	locale, err := api.SpreadsheetLocale(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("read spreadsheet locale: %w", err)
+	}
+	sep := formulaArgSep(locale)
+	formulaCellRange := fmt.Sprintf("%s!A2", tab)
+	statusCol := columnLetter(ColumnStatus)
+	// Stack two QUERY blocks with a row of dashes between, so reviewers see
+	// "GovDAO submitted" rows ABOVE a visible separator above the "GovDAO
+	// pending" rows. Each QUERY is wrapped in IFERROR so an empty side does
+	// not break VSTACK with #N/A. MAKEARRAY+LAMBDA build the divider row
+	// without using locale-sensitive array-literal syntax. Only the outer
+	// function-call separator depends on the spreadsheet locale.
+	qSubmitted := fmt.Sprintf(`QUERY('%s'!A2:%s%s "select * where %s = '%s'")`,
+		sourceSheetName, lastCol, sep, statusCol, StatusGovDAOSubmitted)
+	qPending := fmt.Sprintf(`QUERY('%s'!A2:%s%s "select * where %s = '%s'")`,
+		sourceSheetName, lastCol, sep, statusCol, StatusGovDAOPending)
+	divider := fmt.Sprintf(`MAKEARRAY(1%s %d%s LAMBDA(r%s c%s "───"))`,
+		sep, len(Headers), sep, sep, sep)
+	sub := fmt.Sprintf(`IFERROR(%s%s "")`, qSubmitted, sep)
+	pen := fmt.Sprintf(`IFERROR(%s%s "")`, qPending, sep)
+	formula := fmt.Sprintf(`=IFERROR(VSTACK(%s%s %s%s %s)%s "")`,
+		sub, sep, divider, sep, pen, sep)
+	if err := api.SetFormula(ctx, spreadsheetID, formulaCellRange, formula); err != nil {
+		return fmt.Errorf("write FILTER formula to %q: %w", tab, err)
 	}
 	return nil
 }
@@ -168,6 +323,31 @@ func AppendCandidateRow(ctx context.Context, api API, spreadsheetID, sheetName s
 		return 0, fmt.Errorf("write row at %s: %w", targetRange, err)
 	}
 	return target, nil
+}
+
+// FindByOperatorAddress scans the data band of sheetName for a row whose
+// operator-address column matches addr. Returns the row number (1-based) and
+// the row's status (col C). If no match, returns 0 and "".
+func FindByOperatorAddress(ctx context.Context, api API, spreadsheetID, sheetName, addr string) (int, string, error) {
+	dataRange := fmt.Sprintf("%s!A2:%s", sheetName, columnLetter(Column(len(Headers)-1)))
+	data, err := api.Get(ctx, spreadsheetID, dataRange)
+	if err != nil {
+		return 0, "", fmt.Errorf("scan for duplicate: %w", err)
+	}
+	for i, row := range data {
+		if int(ColumnOperatorAddress) >= len(row) {
+			continue
+		}
+		if fmt.Sprint(row[ColumnOperatorAddress]) != addr {
+			continue
+		}
+		status := ""
+		if int(ColumnStatus) < len(row) {
+			status = fmt.Sprint(row[ColumnStatus])
+		}
+		return i + 2, status, nil
+	}
+	return 0, "", nil
 }
 
 func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string, row int, fields map[Column]string) error {

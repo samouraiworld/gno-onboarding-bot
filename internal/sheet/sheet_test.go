@@ -2,6 +2,7 @@ package sheet
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,31 @@ type fakeAPI struct {
 	ensureTabCalled  bool
 	ensureTabCreated bool
 	ensureTabErr     error
+
+	setFormulaRange   string
+	setFormulaFormula string
+	setFormulaErr     error
+
+	locale    string
+	localeErr error
+
+	dropdownCol      Column
+	dropdownStartRow int
+	dropdownEndRow   int
+	dropdownValues   []string
+	dropdownErr      error
+
+	linkedTextCalled bool
+	linkedTextText   string
+	linkedTextURL    string
+	linkedTextErr    error
+
+	statusColorsCalled  bool
+	statusColorsMapping map[string]string
+	statusColorsErr     error
+
+	freezeCalled bool
+	freezeErr    error
 }
 
 func (f *fakeAPI) Append(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) (string, error) {
@@ -55,6 +81,45 @@ func (f *fakeAPI) UpdateRow(ctx context.Context, spreadsheetID, rangeA1 string, 
 func (f *fakeAPI) EnsureTab(ctx context.Context, spreadsheetID, sheetName string) (bool, error) {
 	f.ensureTabCalled = true
 	return f.ensureTabCreated, f.ensureTabErr
+}
+
+func (f *fakeAPI) SetFormula(ctx context.Context, spreadsheetID, rangeA1, formula string) error {
+	f.setFormulaRange = rangeA1
+	f.setFormulaFormula = formula
+	return f.setFormulaErr
+}
+
+func (f *fakeAPI) SpreadsheetLocale(ctx context.Context, spreadsheetID string) (string, error) {
+	if f.locale == "" {
+		return "en_US", f.localeErr
+	}
+	return f.locale, f.localeErr
+}
+
+func (f *fakeAPI) SetDropdown(ctx context.Context, spreadsheetID, sheetName string, col Column, startRow, endRow int, values []string) error {
+	f.dropdownCol = col
+	f.dropdownStartRow = startRow
+	f.dropdownEndRow = endRow
+	f.dropdownValues = values
+	return f.dropdownErr
+}
+
+func (f *fakeAPI) SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error {
+	f.linkedTextCalled = true
+	f.linkedTextText = text
+	f.linkedTextURL = url
+	return f.linkedTextErr
+}
+
+func (f *fakeAPI) SetStatusColors(ctx context.Context, spreadsheetID, sheetName string, statusCol Column, mapping map[string]string) error {
+	f.statusColorsCalled = true
+	f.statusColorsMapping = mapping
+	return f.statusColorsErr
+}
+
+func (f *fakeAPI) FreezeHeaderRow(ctx context.Context, spreadsheetID, sheetName string) error {
+	f.freezeCalled = true
+	return f.freezeErr
 }
 
 func TestParseRowNumber(t *testing.T) {
@@ -204,6 +269,127 @@ func TestEnsure_WritesHeadersWhenEmpty(t *testing.T) {
 	}
 	if api.updateRowValues[0] != "Candidate" {
 		t.Errorf("first header = %v, want Candidate", api.updateRowValues[0])
+	}
+}
+
+func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
+	api := &fakeAPI{getResult: nil} // both header row and A2 read return empty
+	if err := EnsureApprovedView(context.Background(), api, "sheet-id", "Test"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !api.ensureTabCalled {
+		t.Error("EnsureTab not called")
+	}
+	if api.updateRowRange != "Test-approved!A1:M1" {
+		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test-approved!A1:M1")
+	}
+	if api.setFormulaRange != "Test-approved!A2" {
+		t.Errorf("got formula range %q, want %q", api.setFormulaRange, "Test-approved!A2")
+	}
+	if !strings.Contains(api.setFormulaFormula, "VSTACK(") {
+		t.Errorf("formula missing VSTACK: %s", api.setFormulaFormula)
+	}
+	if !strings.Contains(api.setFormulaFormula, "GovDAO submitted") {
+		t.Errorf("formula missing GovDAO submitted: %s", api.setFormulaFormula)
+	}
+	if !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
+		t.Errorf("formula missing GovDAO pending: %s", api.setFormulaFormula)
+	}
+	if !strings.Contains(api.setFormulaFormula, "MAKEARRAY(1, 13") {
+		t.Errorf("en_US: formula missing MAKEARRAY(1, 13 ...) divider row: %s", api.setFormulaFormula)
+	}
+	subIdx := strings.Index(api.setFormulaFormula, "GovDAO submitted")
+	penIdx := strings.Index(api.setFormulaFormula, "GovDAO pending")
+	if subIdx < 0 || penIdx < 0 || subIdx >= penIdx {
+		t.Errorf("submitted block must appear before pending block: %s", api.setFormulaFormula)
+	}
+}
+
+func TestEnsureApprovedView_UsesSemicolonInFrenchLocale(t *testing.T) {
+	api := &fakeAPI{locale: "fr_FR"}
+	if err := EnsureApprovedView(context.Background(), api, "sheet-id", "Test"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// QUERY inner string literal still has commas inside the SQL; we only
+	// care that the OUTER call separator is ";" — check that ", \"\"" is not
+	// present (that would be the en-US "), """ tail of the formula).
+	if strings.Contains(api.setFormulaFormula, `, "")`) {
+		t.Errorf("fr_FR locale: outer formula must not use comma separator: %s", api.setFormulaFormula)
+	}
+	if !strings.Contains(api.setFormulaFormula, `; "")`) {
+		t.Errorf("fr_FR locale: outer formula must use semicolon separator: %s", api.setFormulaFormula)
+	}
+}
+
+func TestEnsureStatusDropdown_SizesToFilledRows(t *testing.T) {
+	api := &fakeAPI{getResult: [][]interface{}{
+		{"alice"}, {"bob"}, {"carol"},
+	}}
+	if err := EnsureStatusDropdown(context.Background(), api, "sheet-id", "Test"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.dropdownStartRow != 2 || api.dropdownEndRow != 4 {
+		t.Errorf("dropdown rows = [%d, %d], want [2, 4]", api.dropdownStartRow, api.dropdownEndRow)
+	}
+}
+
+func TestEnsureStatusDropdown_SkipsEmptyTab(t *testing.T) {
+	api := &fakeAPI{getResult: nil}
+	if err := EnsureStatusDropdown(context.Background(), api, "sheet-id", "Test"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.dropdownEndRow != 0 {
+		t.Errorf("dropdown applied to empty tab: endRow=%d", api.dropdownEndRow)
+	}
+}
+
+func TestApplyStatusDropdown(t *testing.T) {
+	api := &fakeAPI{}
+	if err := ApplyStatusDropdown(context.Background(), api, "sheet-id", "Test", 7); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.dropdownStartRow != 2 || api.dropdownEndRow != 7 {
+		t.Errorf("dropdown rows = [%d, %d], want [2, 7]", api.dropdownStartRow, api.dropdownEndRow)
+	}
+}
+
+func TestFormulaArgSep(t *testing.T) {
+	tests := []struct {
+		locale string
+		want   string
+	}{
+		{"en_US", ","},
+		{"en_GB", ","},
+		{"ja_JP", ","},
+		{"ko_KR", ","},
+		{"zh_CN", ","},
+		{"fr_FR", ";"},
+		{"de_DE", ";"},
+		{"it_IT", ";"},
+		{"es_ES", ";"},
+		{"pt_BR", ";"},
+		{"", ";"},
+	}
+	for _, tt := range tests {
+		if got := formulaArgSep(tt.locale); got != tt.want {
+			t.Errorf("formulaArgSep(%q) = %q, want %q", tt.locale, got, tt.want)
+		}
+	}
+}
+
+func TestEnsureApprovedView_SkipsHeadersButAlwaysRewritesFormula(t *testing.T) {
+	api := &fakeAPI{getResult: [][]interface{}{{"Candidate"}}}
+	if err := EnsureApprovedView(context.Background(), api, "sheet-id", "Test"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if api.updateRowRange != "" {
+		t.Errorf("UpdateRow called but headers already exist: %q", api.updateRowRange)
+	}
+	if api.setFormulaRange != "Test-approved!A2" {
+		t.Errorf("SetFormula not called or wrong range: %q", api.setFormulaRange)
+	}
+	if !strings.Contains(api.setFormulaFormula, "QUERY('Test'!A2:M") {
+		t.Errorf("formula body wrong: %s", api.setFormulaFormula)
 	}
 }
 
