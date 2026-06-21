@@ -119,10 +119,10 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 	submitMu.Lock()
 	if existingRow, existingStatus, dupErr := sheet.FindByOperatorAddress(context.Background(), api, cfg.SheetID, cfg.SheetName, addr); dupErr != nil {
 		log.Printf("submit: duplicate lookup for %s failed: %v", addr, dupErr)
-	} else if existingRow > 0 && existingStatus != sheet.StatusNeedsRetry {
+	} else if existingRow > 0 && !sheet.IsReopenable(existingStatus) {
 		submitMu.Unlock()
 		log.Printf("submit: duplicate addr=%s row=%d status=%q", addr, existingRow, existingStatus)
-		editEphemeral(s, i.Interaction, fmt.Sprintf("This operator address is already in the tracker (row %d, status %q). If a reviewer asked you to retry, wait for that row to be marked %q before resubmitting.", existingRow, existingStatus, sheet.StatusNeedsRetry))
+		editEphemeral(s, i.Interaction, fmt.Sprintf("This operator address is already in the tracker (row %d, status %q). You can submit again once that row is marked %q or %q.", existingRow, existingStatus, sheet.StatusNeedsRetry, sheet.StatusDeclined))
 		return
 	}
 
@@ -147,7 +147,7 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 
 	// Post the reviewer notification before the cosmetic writes. If it fails,
 	// roll the row back so the candidate is not left with an un-retryable
-	// orphan row (the duplicate guard only re-opens on "Needs retry").
+	// orphan row (the duplicate guard only re-opens on "Needs retry" / "Declined").
 	embed := notify.BuildSubmissionEmbed(rowNumber, candidateID, moniker, addr, valoperLink, description)
 	notifMsg, err := s.ChannelMessageSendComplex(cfg.ValidatorReviewChannelID, &discordgo.MessageSend{
 		Content:         fmt.Sprintf("<@&%s> new submission to review.", cfg.ReviewerRoleID),

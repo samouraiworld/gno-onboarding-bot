@@ -14,7 +14,7 @@ type rawTemplates struct {
 	Acknowledge        string `yaml:"acknowledge"`
 	RequestMissingInfo string `yaml:"request_missing_info"`
 	Approve            string `yaml:"approve"`
-	AskToRetry         string `yaml:"ask_to_retry"`
+	Decline            string `yaml:"decline"`
 	EscalateToCall     string `yaml:"escalate_to_call"`
 }
 
@@ -23,7 +23,7 @@ type Templates struct {
 	acknowledge        *template.Template
 	requestMissingInfo *template.Template
 	approve            *template.Template
-	askToRetry         *template.Template
+	decline            *template.Template
 	escalateToCall     *template.Template
 }
 
@@ -47,7 +47,7 @@ func Load(path string) (*Templates, error) {
 		{"acknowledge", raw.Acknowledge, &t.acknowledge},
 		{"request_missing_info", raw.RequestMissingInfo, &t.requestMissingInfo},
 		{"approve", raw.Approve, &t.approve},
-		{"ask_to_retry", raw.AskToRetry, &t.askToRetry},
+		{"decline", raw.Decline, &t.decline},
 		{"escalate_to_call", raw.EscalateToCall, &t.escalateToCall},
 	}
 	for _, e := range entries {
@@ -84,11 +84,8 @@ func (t *Templates) Approve() (string, error) {
 	return render(t.approve, nil)
 }
 
-func (t *Templates) AskToRetry(criteria []string, actions string) (string, error) {
-	return render(t.askToRetry, struct {
-		Criteria []string
-		Actions  string
-	}{criteria, actions})
+func (t *Templates) Decline(criteria []string) (string, error) {
+	return render(t.decline, struct{ Criteria []string }{criteria})
 }
 
 func (t *Templates) EscalateToCall(topic, options, scope string) (string, error) {

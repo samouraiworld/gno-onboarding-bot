@@ -12,8 +12,8 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 	}
 
 	t.Run("Welcome", func(t *testing.T) {
-		want := "Welcome! Anyone can apply to become a Testnet validator candidate.\n\n" +
-			"I have assigned you the `Testnet Validator Candidate` role. Please go to `#testnet-onboarding`, read the pinned instructions, and complete the onboarding challenge. Once you submit the requested evidence, a member of the Gno team will review it and send you the next steps."
+		want := "Welcome! The `Testnet Validator Candidate` role has been assigned.\n\n" +
+			"You now have access to `#testnet-onboarding`. Read the pinned instructions and complete the challenge. Once the node and application are ready, run `/submit-request` in `#testnet-onboarding` and provide only the validator address."
 		got, err := tpl.Welcome()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -24,7 +24,7 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 	})
 
 	t.Run("Acknowledge", func(t *testing.T) {
-		want := "Thanks, we received your validator onboarding submission. A member of the Gno team will review it against the published criteria and reply by `5 business days`. Please do not send any private key or seed phrase during the review."
+		want := "Thanks, we received the validator address submitted with `/submit-request`. The Gno team will review it against the published criteria and reply by `5 business days`."
 		got, err := tpl.Acknowledge("5 business days")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -35,9 +35,9 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 	})
 
 	t.Run("RequestMissingInfo", func(t *testing.T) {
-		want := "Thanks for the submission. Before we can complete the review, please provide or correct the following:\n\n" +
+		want := "Thanks. Before we can finish the review, please correct:\n\n" +
 			"- `Sync evidence`\n- `Valoper link`\n\n" +
-			"Please reply with the updated public evidence. Do not share private keys, seed phrases, or validator signing keys."
+			"After fixing it, run `/submit-request` again and provide only the validator address."
 		got, err := tpl.RequestMissingInfo([]string{"Sync evidence", "Valoper link"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -48,10 +48,8 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 	})
 
 	t.Run("Approve", func(t *testing.T) {
-		want := "Your onboarding challenge has been approved. We have assigned you the `Testnet Validator` role.\n\n" +
-			"Next steps:\n\n" +
-			"1. Wait for GovDAO approval and confirmation before considering your validator active.\n\n" +
-			"New external validators start with voting power `1` and may receive more voting power later under a separate, documented process."
+		want := "Congratulations, you passed the onboarding challenge. We assigned you the `Testnet Validator` role.\n\n" +
+			"Next: wait for GovDAO approval and confirmation before treating your validator as active. New external validators start with voting power `1` and may earn more later through a separate, documented process."
 		got, err := tpl.Approve()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -61,21 +59,22 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 		}
 	})
 
-	t.Run("AskToRetry", func(t *testing.T) {
-		want := "Thanks for completing the onboarding challenge. We cannot approve it yet because the following published criteria are not complete:\n\n" +
+	t.Run("Decline", func(t *testing.T) {
+		want := "Thanks for completing the challenge. We cannot approve this application because the following published criteria are not met:\n\n" +
 			"- `Sync: not synced`\n- `Profile: missing intro`\n\n" +
-			"To retry, please `re-sync and resubmit` and submit the updated evidence here. You are welcome to ask technical questions if any instruction is unclear."
-		got, err := tpl.AskToRetry([]string{"Sync: not synced", "Profile: missing intro"}, "re-sync and resubmit")
+			"The `Testnet Validator Candidate` role will now be removed.\n\n" +
+			"To apply again, restart the process from the beginning: run `/candidate-testnet` in `┋💬ㆍgeneral-chat`, complete every pinned onboarding step, then run `/submit-request` with only the validator address. The new application will be reviewed independently."
+		got, err := tpl.Decline([]string{"Sync: not synced", "Profile: missing intro"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if got != want {
-			t.Errorf("AskToRetry() = %q, want %q", got, want)
+			t.Errorf("Decline() = %q, want %q", got, want)
 		}
 	})
 
 	t.Run("EscalateToCall", func(t *testing.T) {
-		want := "Thanks for the submission. Most of the challenge is complete, but we need to clarify `sync status` before making a decision. Could you join a short technical call at one of these times: `Tue 10:00 UTC, Wed 15:00 UTC`? The call will focus on `sync status`."
+		want := "Thanks for the submission. Before we decide, we need to clarify `sync status`. Can you join a short technical call at one of these times: `Tue 10:00 UTC, Wed 15:00 UTC`? It will focus on `sync status`."
 		got, err := tpl.EscalateToCall("sync status", "Tue 10:00 UTC, Wed 15:00 UTC", "sync status")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

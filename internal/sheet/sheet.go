@@ -84,6 +84,7 @@ const (
 	StatusCandidate           = "Candidate"
 	StatusChallengeInProgress = "Challenge in progress"
 	StatusNeedsRetry          = "Needs retry"
+	StatusDeclined            = "Declined"
 	StatusApproved            = "Approved"
 	StatusGovDAOPending       = "GovDAO pending"
 	StatusGovDAOSubmitted     = "GovDAO submitted"
@@ -182,6 +183,7 @@ var StatusColors = map[string]string{
 	StatusCandidate:           "#e0e0e0",
 	StatusChallengeInProgress: "#fff2a8",
 	StatusNeedsRetry:          "#fcd5b4",
+	StatusDeclined:            "#f4c7c3",
 	StatusApproved:            "#c2eebc",
 	StatusGovDAOPending:       "#b6d7f5",
 	StatusGovDAOSubmitted:     "#d9c4ec",
@@ -205,6 +207,7 @@ var AllStatuses = []string{
 	StatusCandidate,
 	StatusChallengeInProgress,
 	StatusNeedsRetry,
+	StatusDeclined,
 	StatusApproved,
 	StatusGovDAOPending,
 	StatusGovDAOSubmitted,
@@ -443,6 +446,19 @@ func EvidenceTabName(sourceSheetName string) string { return sourceSheetName + "
 func IsValidated(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case strings.ToLower(StatusApproved), strings.ToLower(StatusGovDAOPending), strings.ToLower(StatusGovDAOSubmitted):
+		return true
+	}
+	return false
+}
+
+// IsReopenable reports whether an existing row for an operator address is in a
+// terminal-for-now state that permits a fresh /submit-request to append a new
+// row for the same address: "Needs retry" (reviewer asked for a resubmission)
+// or "Declined" (candidate must restart from the beginning). Case- and
+// whitespace-tolerant.
+func IsReopenable(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case strings.ToLower(StatusNeedsRetry), strings.ToLower(StatusDeclined):
 		return true
 	}
 	return false
