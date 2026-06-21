@@ -11,6 +11,11 @@ type fakeUpdate struct {
 	value   string
 }
 
+type matrixWrite struct {
+	rangeA1 string
+	values  [][]interface{}
+}
+
 type fakeAPI struct {
 	appendRange  string
 	appendValues []interface{}
@@ -30,6 +35,7 @@ type fakeAPI struct {
 	ensureTabCalled  bool
 	ensureTabCreated bool
 	ensureTabErr     error
+	ensureTabNames   []string
 
 	setFormulaRange   string
 	setFormulaFormula string
@@ -55,6 +61,12 @@ type fakeAPI struct {
 
 	freezeCalled bool
 	freezeErr    error
+
+	updateRowCalls  []matrixWrite
+	checkboxes      [][2]Column
+	cleared         []string
+	writeRowsRange  string
+	writeRowsValues [][]interface{}
 }
 
 func (f *fakeAPI) Append(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) (string, error) {
@@ -75,11 +87,29 @@ func (f *fakeAPI) Get(ctx context.Context, spreadsheetID, rangeA1 string) ([][]i
 func (f *fakeAPI) UpdateRow(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) error {
 	f.updateRowRange = rangeA1
 	f.updateRowValues = values
+	f.updateRowCalls = append(f.updateRowCalls, matrixWrite{rangeA1, [][]interface{}{values}})
 	return f.updateRowErr
+}
+
+func (f *fakeAPI) SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error {
+	f.checkboxes = append(f.checkboxes, [2]Column{startCol, endCol})
+	return nil
+}
+
+func (f *fakeAPI) ClearValues(ctx context.Context, spreadsheetID, rangeA1 string) error {
+	f.cleared = append(f.cleared, rangeA1)
+	return nil
+}
+
+func (f *fakeAPI) WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, values [][]interface{}) error {
+	f.writeRowsRange = rangeA1
+	f.writeRowsValues = values
+	return nil
 }
 
 func (f *fakeAPI) EnsureTab(ctx context.Context, spreadsheetID, sheetName string) (bool, error) {
 	f.ensureTabCalled = true
+	f.ensureTabNames = append(f.ensureTabNames, sheetName)
 	return f.ensureTabCreated, f.ensureTabErr
 }
 
@@ -298,41 +328,39 @@ func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
 	if !api.ensureTabCalled {
 		t.Error("EnsureTab not called")
 	}
-	if api.updateRowRange != "Test-approved!A1:M1" {
-		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test-approved!A1:M1")
+	if api.updateRowRange != "Test-approved!A1:Y1" {
+		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test-approved!A1:Y1")
+	}
+	if len(api.updateRowValues) != 25 {
+		t.Fatalf("approved headers must span A-Y (25 cols), got %d", len(api.updateRowValues))
+	}
+	if api.updateRowValues[24] != "Evidence links" {
+		t.Errorf("last approved header = %v, want \"Evidence links\"", api.updateRowValues[24])
 	}
 	if api.setFormulaRange != "Test-approved!A2" {
 		t.Errorf("got formula range %q, want %q", api.setFormulaRange, "Test-approved!A2")
 	}
-	if !strings.Contains(api.setFormulaFormula, "VSTACK(") {
-		t.Errorf("formula missing VSTACK: %s", api.setFormulaFormula)
+	// A single self-spilling QUERY (IFS/VSTACK cannot return a multi-row array).
+	if !strings.Contains(api.setFormulaFormula, "QUERY(") {
+		t.Errorf("formula missing QUERY: %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "GovDAO submitted") {
-		t.Errorf("formula missing GovDAO submitted: %s", api.setFormulaFormula)
+	if strings.Contains(api.setFormulaFormula, "IFS(") || strings.Contains(api.setFormulaFormula, "VSTACK(") {
+		t.Errorf("formula must not use IFS/VSTACK (they can't spill arrays): %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
-		t.Errorf("formula missing GovDAO pending: %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "GovDAO submitted") || !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
+		t.Errorf("formula missing a GovDAO status: %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "MAKEARRAY(1, 13") {
-		t.Errorf("en_US: formula missing MAKEARRAY(1, 13 ...) divider row: %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "order by") {
+		t.Errorf("formula missing 'order by' (submitted above pending): %s", api.setFormulaFormula)
 	}
 	subIdx := strings.Index(api.setFormulaFormula, "GovDAO submitted")
 	penIdx := strings.Index(api.setFormulaFormula, "GovDAO pending")
 	if subIdx < 0 || penIdx < 0 || subIdx >= penIdx {
-		t.Errorf("submitted block must appear before pending block: %s", api.setFormulaFormula)
+		t.Errorf("submitted must appear before pending: %s", api.setFormulaFormula)
 	}
-	// QUERY must pass headers=0 so it never lifts the first data row into a
-	// header row (silent data-loss otherwise on the data-only source range).
+	// QUERY must pass headers=0 so it never lifts the first data row into a header.
 	if !strings.Contains(api.setFormulaFormula, ", 0)") {
 		t.Errorf("QUERY missing explicit headers=0 argument: %s", api.setFormulaFormula)
-	}
-	// Divider must be gated on both categories being non-empty (COUNTIF + IFS),
-	// so an empty category does not surface a stray divider or #N/A padding.
-	if !strings.Contains(api.setFormulaFormula, "COUNTIF(") {
-		t.Errorf("formula missing COUNTIF category counts: %s", api.setFormulaFormula)
-	}
-	if !strings.Contains(api.setFormulaFormula, "IFS(") {
-		t.Errorf("formula missing IFS category gating: %s", api.setFormulaFormula)
 	}
 }
 
@@ -408,19 +436,21 @@ func TestFormulaArgSep(t *testing.T) {
 	}
 }
 
-func TestEnsureApprovedView_SkipsHeadersButAlwaysRewritesFormula(t *testing.T) {
+func TestEnsureApprovedView_RewritesNarrowHeaderToFullWidth(t *testing.T) {
+	// An older approved tab with only the A-M intake header must be brought up to
+	// the full A-Y schema, not skipped.
 	api := &fakeAPI{getResult: [][]interface{}{{"Candidate"}}}
 	if err := EnsureApprovedView(context.Background(), api, "sheet-id", "Test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if api.updateRowRange != "" {
-		t.Errorf("UpdateRow called but headers already exist: %q", api.updateRowRange)
+	if api.updateRowRange != "Test-approved!A1:Y1" {
+		t.Errorf("headers must be rewritten to A1:Y1, got %q", api.updateRowRange)
 	}
 	if api.setFormulaRange != "Test-approved!A2" {
 		t.Errorf("SetFormula not called or wrong range: %q", api.setFormulaRange)
 	}
-	if !strings.Contains(api.setFormulaFormula, "QUERY('Test'!A2:M") {
-		t.Errorf("formula body wrong: %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "QUERY('Test'!A2:Y") {
+		t.Errorf("formula must mirror the full A2:Y range: %s", api.setFormulaFormula)
 	}
 }
 
@@ -440,4 +470,141 @@ func TestUpdateFields_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
+}
+
+func TestIsValidated(t *testing.T) {
+	for _, s := range []string{StatusApproved, StatusGovDAOPending, StatusGovDAOSubmitted, " approved ", "GOVDAO SUBMITTED"} {
+		if !IsValidated(s) {
+			t.Errorf("IsValidated(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusNeedsRetry, "", "rejected"} {
+		if IsValidated(s) {
+			t.Errorf("IsValidated(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestReadCandidates(t *testing.T) {
+	api := &fakeAPI{getResult: [][]interface{}{
+		// A..M: Candidate, Discord, Status, Challenge, Reviewers, Missing, Decision, Valoper, GovDAO, Moniker, Operator, Intro, ReviewLink
+		{"alice", "@alice", "Approved", "", "", "", "", "https://v/g1a", "", "alice-val", "g1alice", "intro a", ""},
+		{"", "", ""}, // blank candidate -> skipped
+		{"bob", "@bob", "Candidate"},
+	}}
+	got, err := ReadCandidates(context.Background(), api, "id", "Candidates")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2", len(got))
+	}
+	if got[0].Row != 2 || got[0].Candidate != "alice" || got[0].Status != "Approved" ||
+		got[0].Moniker != "alice-val" || got[0].OperatorAddress != "g1alice" || got[0].Valoper != "https://v/g1a" {
+		t.Errorf("alice = %+v", got[0])
+	}
+	if got[1].Row != 4 || got[1].Candidate != "bob" || got[1].OperatorAddress != "" {
+		t.Errorf("bob = %+v", got[1])
+	}
+}
+
+func TestWriteHarvestColumns(t *testing.T) {
+	api := &fakeAPI{}
+	if err := WriteHarvestColumns(context.Background(), api, "id", "Candidates", 2, "Secret leak: private_key", "12 msgs"); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, u := range api.updates {
+		got[u.rangeA1] = u.value
+	}
+	if got["Candidates!W2"] != "Secret leak: private_key" || got["Candidates!X2"] != "12 msgs" {
+		t.Errorf("Red flags (W2)/Engagement (X2) = %v", got)
+	}
+}
+
+func TestWriteDigestColumns(t *testing.T) {
+	api := &fakeAPI{}
+	criteria := []bool{true, true, false, false, true, false, true} // setup,sync,tx,valoper,ops,comms,safety
+	if err := WriteDigestColumns(context.Background(), api, "id", "Candidates", 2, "High (6/7)", "ok", "https://l", criteria); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, u := range api.updates {
+		got[u.rangeA1] = u.value
+	}
+	if got["Candidates!N2"] != "High (6/7)" || got["Candidates!O2"] != "ok" || got["Candidates!Y2"] != "https://l" {
+		t.Errorf("text columns = %v", got)
+	}
+	if api.updateRowRange != "Candidates!P2:V2" {
+		t.Errorf("criteria range = %q, want Candidates!P2:V2", api.updateRowRange)
+	}
+	// Assert all 7 positions so a reordering inside writeCriteria can't slip a
+	// criterion into the wrong checkbox column.
+	if len(api.updateRowValues) != len(criteria) {
+		t.Fatalf("got %d criterion cells, want %d", len(api.updateRowValues), len(criteria))
+	}
+	for i, want := range criteria {
+		if api.updateRowValues[i] != want {
+			t.Errorf("criterion[%d] = %v, want %v", i, api.updateRowValues[i], want)
+		}
+	}
+}
+
+func TestMarkDuplicateRow(t *testing.T) {
+	api := &fakeAPI{}
+	if err := MarkDuplicateRow(context.Background(), api, "id", "Candidates", 3, 5); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, u := range api.updates {
+		got[u.rangeA1] = u.value
+	}
+	if got["Candidates!N3"] != "Duplicate of row 5" {
+		t.Errorf("Readiness = %q", got["Candidates!N3"])
+	}
+	for _, cell := range []string{"O3", "W3", "X3", "Y3"} {
+		if v, ok := got["Candidates!"+cell]; !ok || v != "" {
+			t.Errorf("%s should be cleared (got %q, present=%v)", cell, v, ok)
+		}
+	}
+	if api.updateRowRange != "Candidates!P3:V3" || len(api.updateRowValues) != 7 || api.updateRowValues[0] != false {
+		t.Errorf("criteria not cleared: range=%q vals=%v", api.updateRowRange, api.updateRowValues)
+	}
+}
+
+func TestEnsureHarvestLayout(t *testing.T) {
+	api := &fakeAPI{}
+	if err := EnsureHarvestLayout(context.Background(), api, "id", "Candidates"); err != nil {
+		t.Fatal(err)
+	}
+	// one checkbox range: criteria P-V (ColumnSetup..ColumnSafety+1). No Selected.
+	if len(api.checkboxes) != 1 {
+		t.Fatalf("checkbox calls = %v, want 1 (criteria only)", api.checkboxes)
+	}
+	if api.checkboxes[0] != [2]Column{ColumnSetup, ColumnSafety + 1} {
+		t.Errorf("criteria checkbox range = %v", api.checkboxes[0])
+	}
+	// assessment header row N1:Y1 written
+	if !hasUpdateRow(api, "Candidates!N1:Y1") {
+		t.Errorf("assessment header not written; calls=%v", api.updateRowCalls)
+	}
+	// evidence tab ensured, by its derived name
+	foundEvidence := false
+	for _, n := range api.ensureTabNames {
+		if n == EvidenceTabName("Candidates") {
+			foundEvidence = true
+		}
+	}
+	if !foundEvidence {
+		t.Errorf("evidence tab %q not ensured; ensured=%v", EvidenceTabName("Candidates"), api.ensureTabNames)
+	}
+}
+
+func hasUpdateRow(api *fakeAPI, rangeA1 string) bool {
+	for _, c := range api.updateRowCalls {
+		if c.rangeA1 == rangeA1 {
+			return true
+		}
+	}
+	return false
 }

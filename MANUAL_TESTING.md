@@ -43,3 +43,17 @@ The bot does not do this itself (Discord rejects bot tokens on the permissions e
 - [ ] Deleted/invalid notification: delete a notification message in `#validator-review`, then try right-clicking a different, unrelated message in that channel with one of the four reviewer commands — confirm an ephemeral error rather than a crash or an orphaned DM.
 - [ ] Empty required field: submit any modal leaving a required field blank — confirm an ephemeral error naming the missing field, and that no DM or Sheet write happens.
 - [ ] Sheets failure: temporarily revoke the service account's access to the Sheet, then run `/candidate-testnet` — confirm an ephemeral error and that no role is granted (Sheet write failure must block the role change, per the design's error-handling rule).
+
+## Harvest checklist
+
+Prereq: enable the privileged **Message Content** intent and give the bot **Read Message History** in the three channels. Seed a few candidate rows (with an operator address in column K for some) and post candidate/reviewer messages, including one with a fake seed phrase or `192.168.x.x` for redaction.
+
+- [ ] Startup: a fresh sheet gets the N-Y assessment headers, checkboxes on P-V, and a `{source}-evidence` tab.
+- [ ] `/harvest` (reviewer, in `#validator-review`): replies ephemerally with `harvest.json` + a count (incl. "duplicate rows collapsed" / "already-validated"). The `-evidence` tab fills, and Red flags (W) / Engagement (X) fill for active candidates.
+- [ ] Redaction: the seeded secret shows as `[REDACTED:...]` in `harvest.json` and the evidence tab; the Red flags cell names the kind.
+- [ ] Valoper: a candidate with operator address in column K shows `signals.valoper_state: "found"`; one without shows `not_found`.
+- [ ] Duplicate handles: two rows for one `@handle` → only the latest is evaluated; the older reads `Duplicate of row N` with its assessment cells cleared.
+- [ ] Validated rows skipped: set a row's Status to `Approved`/`GovDAO pending`/`GovDAO submitted` → absent from `harvest.json`, columns untouched.
+- [ ] Run the `competency-digest` skill on `harvest.json` → `digest.json`, then `/harvest-import` it: Readiness (N), Summary (O), criterion checkboxes (P-V), Evidence links (Y) fill; the human columns (A-M) are untouched.
+- [ ] Curation: set a reviewed candidate's Status to `Approved`/`GovDAO pending` → it appears in PR #4's `-approved` tab (no separate Selected column).
+- [ ] `/harvest-import` with a malformed file → ephemeral error, no writes.

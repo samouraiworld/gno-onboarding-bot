@@ -248,13 +248,13 @@ func (c *GoogleSheetsClient) SetStatusColors(ctx context.Context, spreadsheetID,
 						SheetId:          sheetID,
 						StartRowIndex:    1,
 						StartColumnIndex: 0,
-						EndColumnIndex:   int64(len(Headers)),
+						EndColumnIndex:   int64(len(columnLetters)), // full schema width A-Y
 					}},
 					BooleanRule: &sheets.BooleanRule{
 						Condition: &sheets.BooleanCondition{
 							Type: "CUSTOM_FORMULA",
 							Values: []*sheets.ConditionValue{{
-								UserEnteredValue: fmt.Sprintf(`=$%s2=%q`, colLetter(int(statusCol)), status),
+								UserEnteredValue: fmt.Sprintf(`=$%s2=%q`, columnLetter(statusCol), status),
 							}},
 						},
 						Format: &sheets.CellFormat{
@@ -316,14 +316,6 @@ func hexToRGB(hex string) (float64, float64, float64) {
 	return float64(r) / 255, float64(g) / 255, float64(b) / 255
 }
 
-func colLetter(zeroBased int) string {
-	letters := []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"}
-	if zeroBased < 0 || zeroBased >= len(letters) {
-		return "A"
-	}
-	return letters[zeroBased]
-}
-
 // SpreadsheetLocale returns the spreadsheet's locale (e.g. "fr_FR", "en_US").
 // Used to pick the formula-argument separator since Sheets does NOT translate
 // API-written formulas across locales.
@@ -362,4 +354,47 @@ func (c *GoogleSheetsClient) EnsureTab(ctx context.Context, spreadsheetID, sheet
 	}
 	log.Printf("sheets: created tab %q", sheetName)
 	return true, nil
+}
+
+// SetCheckbox installs BOOLEAN data validation (a checkbox) on columns
+// [startCol, endCol) of sheetName, from row 2 down.
+func (c *GoogleSheetsClient) SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error {
+	sheetID, err := c.sheetIDByName(ctx, spreadsheetID, sheetName)
+	if err != nil {
+		return err
+	}
+	_, err = c.svc.Spreadsheets.BatchUpdate(spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{{
+			SetDataValidation: &sheets.SetDataValidationRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    1, // skip the header row
+					StartColumnIndex: int64(startCol),
+					EndColumnIndex:   int64(endCol),
+					ForceSendFields:  []string{"SheetId"},
+				},
+				Rule: &sheets.DataValidationRule{
+					Condition:    &sheets.BooleanCondition{Type: "BOOLEAN"},
+					ShowCustomUi: true,
+				},
+			},
+		}},
+	}).Context(ctx).Do()
+	return err
+}
+
+// ClearValues clears the values in the given A1 range (used to rebuild the
+// evidence tab from scratch).
+func (c *GoogleSheetsClient) ClearValues(ctx context.Context, spreadsheetID, rangeA1 string) error {
+	_, err := c.svc.Spreadsheets.Values.Clear(spreadsheetID, rangeA1, &sheets.ClearValuesRequest{}).Context(ctx).Do()
+	return err
+}
+
+// WriteRows writes a matrix of values starting at rangeA1 (RAW), so Go bool
+// values land as real booleans that render as checked checkboxes.
+func (c *GoogleSheetsClient) WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, values [][]interface{}) error {
+	_, err := c.svc.Spreadsheets.Values.Update(spreadsheetID, rangeA1, &sheets.ValueRange{
+		Values: values,
+	}).ValueInputOption("RAW").Context(ctx).Do()
+	return err
 }

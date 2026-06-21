@@ -48,18 +48,28 @@ func main() {
 	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure status colors: %v", err)
 	}
+	// Color the -approved tab by status too, so "GovDAO submitted" and "GovDAO
+	// pending" rows are visually separated (replaces the old divider row).
+	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
+		log.Fatalf("ensure status colors (approved): %v", err)
+	}
 	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure frozen header (source): %v", err)
 	}
 	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
 		log.Fatalf("ensure frozen header (approved): %v", err)
 	}
+	// Harvest assessment layer: N-Y columns + criterion checkboxes, the -evidence tab.
+	if err := sheet.EnsureHarvestLayout(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure harvest layout: %v", err)
+	}
 
 	s, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
 		log.Fatalf("create discord session: %v", err)
 	}
-	s.Identify.Intents = discordgo.IntentsGuilds
+	// GuildMessages + MessageContent (privileged) let /harvest read channel history.
+	s.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
 
 	ready := make(chan struct{})
 	s.AddHandlerOnce(func(s *discordgo.Session, r *discordgo.Ready) {
@@ -78,6 +88,7 @@ func main() {
 		handlers.RegisterAskToRetry,
 		handlers.RegisterEscalateToCall,
 		handlers.RegisterApprove,
+		handlers.RegisterHarvest,
 	}
 	for _, register := range registrations {
 		if err := register(s, cfg, sheetsClient, tpl); err != nil {

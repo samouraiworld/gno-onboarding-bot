@@ -25,9 +25,56 @@ const (
 	ColumnOperatorAddress
 	ColumnIntroduction
 	ColumnReviewMessageLink
+	// Harvest assessment columns (N-Y), appended after the A-M intake columns.
+	// The bot refreshes these on every harvest/import. Curating "good validators"
+	// is done via the Status column + PR #4's "-approved" view, not a separate
+	// Selected column.
+	ColumnReadiness     // N
+	ColumnSummary       // O
+	ColumnSetup         // P ┐
+	ColumnSync          // Q │
+	ColumnTx            // R │ seven criterion checkboxes, in harvest.Criteria order
+	ColumnValoper       // S │
+	ColumnOps           // T │
+	ColumnComms         // U │
+	ColumnSafety        // V ┘
+	ColumnRedFlags      // W
+	ColumnEngagement    // X
+	ColumnEvidenceLinks // Y
 )
 
-var columnLetters = []string{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"}
+var columnLetters = []string{
+	"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+	"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y",
+}
+
+// criterionColumns are the seven checkbox columns (P-V), in harvest.Criteria order.
+var criterionColumns = []Column{
+	ColumnSetup, ColumnSync, ColumnTx, ColumnValoper, ColumnOps, ColumnComms, ColumnSafety,
+}
+
+// derivedColumns lists the harvest assessment columns N-Y in order.
+var derivedColumns = []Column{
+	ColumnReadiness, ColumnSummary,
+	ColumnSetup, ColumnSync, ColumnTx, ColumnValoper, ColumnOps, ColumnComms, ColumnSafety,
+	ColumnRedFlags, ColumnEngagement, ColumnEvidenceLinks,
+}
+
+// derivedHeaders labels the assessment columns (N-Y).
+var derivedHeaders = map[Column]string{
+	ColumnReadiness:     "Readiness",
+	ColumnSummary:       "Summary",
+	ColumnSetup:         "Setup",
+	ColumnSync:          "Sync",
+	ColumnTx:            "Tx",
+	ColumnValoper:       "Valoper",
+	ColumnOps:           "Ops",
+	ColumnComms:         "Comms",
+	ColumnSafety:        "Safety",
+	ColumnRedFlags:      "Red flags",
+	ColumnEngagement:    "Engagement",
+	ColumnEvidenceLinks: "Evidence links",
+}
 
 func columnLetter(c Column) string {
 	return columnLetters[c]
@@ -99,6 +146,19 @@ var Headers = []string{
 	"Review message link",
 }
 
+// allHeaders is the full A-Y header row: the intake headers (A-M) followed by the
+// harvest assessment headers (N-Y) in column order.
+func allHeaders() []interface{} {
+	out := make([]interface{}, 0, len(Headers)+len(derivedColumns))
+	for _, h := range Headers {
+		out = append(out, h)
+	}
+	for _, c := range derivedColumns {
+		out = append(out, derivedHeaders[c])
+	}
+	return out
+}
+
 type API interface {
 	Append(ctx context.Context, spreadsheetID, rangeA1 string, values []interface{}) (updatedRange string, err error)
 	Update(ctx context.Context, spreadsheetID, rangeA1, value string) error
@@ -111,6 +171,9 @@ type API interface {
 	SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error
 	SetStatusColors(ctx context.Context, spreadsheetID, sheetName string, statusCol Column, mapping map[string]string) error
 	FreezeHeaderRow(ctx context.Context, spreadsheetID, sheetName string) error
+	SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error
+	ClearValues(ctx context.Context, spreadsheetID, rangeA1 string) error
+	WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, values [][]interface{}) error
 }
 
 // StatusColors maps each status to a light hex background color used by
@@ -124,7 +187,8 @@ var StatusColors = map[string]string{
 	StatusGovDAOSubmitted:     "#d9c4ec",
 }
 
-// EnsureStatusColors installs the status-row coloring rules on sheetName.
+// EnsureStatusColors installs the status-row coloring rules on sheetName,
+// coloring the full A-Y schema width of each matching row.
 func EnsureStatusColors(ctx context.Context, api API, spreadsheetID, sheetName string) error {
 	return api.SetStatusColors(ctx, spreadsheetID, sheetName, ColumnStatus, StatusColors)
 }
@@ -219,33 +283,26 @@ func Ensure(ctx context.Context, api API, spreadsheetID, sheetName string) error
 }
 
 // EnsureApprovedView creates the "{source}-approved" tab if missing and
-// populates it with the column headers plus a live FILTER formula that mirrors
-// the source tab's rows whose status is StatusGovDAOPending. Safe to call
-// multiple times; only writes when cells are empty.
+// populates it with the full column headers (intake A-M plus the harvest
+// assessment columns N-Y) and a live QUERY that mirrors every column of the
+// source tab's GovDAO-progressing rows. Safe to call multiple times.
 func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheetName string) error {
 	tab := ApprovedTabName(sourceSheetName)
 	if _, err := api.EnsureTab(ctx, spreadsheetID, tab); err != nil {
 		return fmt.Errorf("ensure tab %q: %w", tab, err)
 	}
-	lastCol := columnLetter(Column(len(Headers) - 1))
+	lastCol := columnLetter(ColumnEvidenceLinks) // mirror the full A-Y schema
+	// Always (re)write the full header row: this tab is a bot-owned view, and an
+	// older A-M header row from before the assessment columns existed must be
+	// brought up to A-Y rather than skipped.
 	headerRange := fmt.Sprintf("%s!A1:%s1", tab, lastCol)
-	row1, err := api.Get(ctx, spreadsheetID, headerRange)
-	if err != nil {
-		return fmt.Errorf("read header row of %q: %w", tab, err)
+	if err := api.UpdateRow(ctx, spreadsheetID, headerRange, allHeaders()); err != nil {
+		return fmt.Errorf("write headers to %q: %w", tab, err)
 	}
-	if len(row1) == 0 || rowIsEmpty(row1[0]) {
-		values := make([]interface{}, len(Headers))
-		for i, h := range Headers {
-			values[i] = h
-		}
-		if err := api.UpdateRow(ctx, spreadsheetID, headerRange, values); err != nil {
-			return fmt.Errorf("write headers to %q: %w", tab, err)
-		}
-	}
-	// Always rewrite the FILTER formula. Idempotent on the happy path; on the
-	// unhappy path (cell holds a locale-broken formula whose rendered value
-	// reads as "#ERROR!", i.e. non-empty), a skip check would prevent the fix
-	// from ever applying.
+	// Always rewrite the QUERY too. Idempotent on the happy path; on the unhappy
+	// path (cell holds a locale-broken formula whose rendered value reads as
+	// "#ERROR!", i.e. non-empty), a skip check would prevent the fix from ever
+	// applying.
 	locale, err := api.SpreadsheetLocale(ctx, spreadsheetID)
 	if err != nil {
 		return fmt.Errorf("read spreadsheet locale: %w", err)
@@ -260,48 +317,20 @@ func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheet
 }
 
 // approvedViewFormula builds the spilling array formula for the "-approved"
-// tab. It lists "GovDAO submitted" rows above a divider row above "GovDAO
-// pending" rows, and is robust to either category being empty:
+// tab: a single QUERY selecting both GovDAO statuses, ordered so "GovDAO
+// submitted" rows sort above "GovDAO pending" rows ("submitted" > "pending",
+// so `order by desc`). IFERROR renders "" when neither category has rows.
 //
-//   - QUERY is given headers=0 so it never lifts the first data row into a
-//     header (data-loss bug otherwise, since the source range is data-only).
-//   - COUNTIF gives scalar category counts, so the divider row is shown ONLY
-//     when both categories are non-empty (no stray divider, no #N/A padding).
-//   - When a single category is non-empty its QUERY block is returned as-is;
-//     when both are empty the cell renders "".
-//
-// sep is the locale's function-argument separator ("," or ";"). The QUERY SQL
-// is a single string literal, so it is locale-independent.
+// A single self-spilling QUERY is used deliberately: IFS/VSTACK cannot return a
+// multi-row array from a branch (Sheets raises "IFS range size inconsistent"),
+// so the earlier LET/IFS form errored. headers=0 keeps QUERY from lifting the
+// first data row into a header. sep is the locale's function-argument separator
+// ("," or ";"); the SQL is a single string literal, so it is locale-independent.
 func approvedViewFormula(sourceSheetName, lastCol, statusCol, sep string) string {
-	join := func(args ...string) string { return strings.Join(args, sep+" ") }
-	quote := func(s string) string { return `"` + s + `"` }
-
 	src := fmt.Sprintf("'%s'!A2:%s", sourceSheetName, lastCol)
-	statusRange := fmt.Sprintf("'%s'!%s2:%s", sourceSheetName, statusCol, statusCol)
-
-	query := func(statusVal string) string {
-		sql := quote(fmt.Sprintf("select * where %s = '%s'", statusCol, statusVal))
-		return "IFERROR(QUERY(" + join(src, sql, "0") + ")" + sep + ` "")`
-	}
-	count := func(statusVal string) string {
-		return "COUNTIF(" + join(statusRange, quote(statusVal)) + ")"
-	}
-	divider := "MAKEARRAY(" + join("1", strconv.Itoa(len(Headers)),
-		"LAMBDA("+join("r", "c", quote("───"))+")") + ")"
-
-	ifs := "IFS(" + join(
-		"AND("+join("nS>0", "nP>0")+")", "VSTACK("+join("qs", divider, "qp")+")",
-		"nS>0", "qs",
-		"nP>0", "qp",
-		"TRUE", quote(""),
-	) + ")"
-	return "=LET(" + join(
-		"nS", count(StatusGovDAOSubmitted),
-		"nP", count(StatusGovDAOPending),
-		"qs", query(StatusGovDAOSubmitted),
-		"qp", query(StatusGovDAOPending),
-		ifs,
-	) + ")"
+	sql := fmt.Sprintf(`"select * where %s = '%s' or %s = '%s' order by %s desc"`,
+		statusCol, StatusGovDAOSubmitted, statusCol, StatusGovDAOPending, statusCol)
+	return fmt.Sprintf(`=IFERROR(QUERY(%s%s %s%s 0)%s "")`, src, sep, sql, sep, sep)
 }
 
 func rowIsEmpty(r []interface{}) bool {
@@ -399,6 +428,162 @@ func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string,
 		if err := api.Update(ctx, spreadsheetID, rangeA1, value); err != nil {
 			return fmt.Errorf("update %s: %w", rangeA1, err)
 		}
+	}
+	return nil
+}
+
+// --- Harvest assessment layer (columns N-Y, the Evidence tab) ---
+
+// EvidenceTabName is the derived raw-evidence tab the harvest manages, named
+// "{source}-evidence" (mirrors the "{source}-approved" naming of the view tab).
+func EvidenceTabName(sourceSheetName string) string { return sourceSheetName + "-evidence" }
+
+// IsValidated reports whether a candidate has already passed onboarding and so
+// should be left untouched by the harvest pass. Case- and whitespace-tolerant.
+func IsValidated(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case strings.ToLower(StatusApproved), strings.ToLower(StatusGovDAOPending), strings.ToLower(StatusGovDAOSubmitted):
+		return true
+	}
+	return false
+}
+
+// TrackerRow is one existing candidate row, read back for the harvest pass.
+type TrackerRow struct {
+	Row             int
+	Candidate       string
+	Discord         string
+	Status          string
+	Valoper         string
+	Moniker         string
+	OperatorAddress string
+	Introduction    string
+}
+
+func cellAt(row []interface{}, idx int) string {
+	if idx < 0 || idx >= len(row) {
+		return ""
+	}
+	if s, ok := row[idx].(string); ok {
+		return s
+	}
+	return fmt.Sprint(row[idx])
+}
+
+// ReadCandidates reads the intake rows (A2:M); header row 1 is skipped and rows
+// with an empty Candidate cell are ignored.
+func ReadCandidates(ctx context.Context, api API, spreadsheetID, sheetName string) ([]TrackerRow, error) {
+	rows, err := api.Get(ctx, spreadsheetID, sheetName+"!A2:M")
+	if err != nil {
+		return nil, fmt.Errorf("read candidates: %w", err)
+	}
+	var out []TrackerRow
+	for i, r := range rows {
+		candidate := cellAt(r, int(ColumnCandidate))
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		out = append(out, TrackerRow{
+			Row:             i + 2,
+			Candidate:       candidate,
+			Discord:         cellAt(r, int(ColumnDiscord)),
+			Status:          cellAt(r, int(ColumnStatus)),
+			Valoper:         cellAt(r, int(ColumnValoperLink)),
+			Moniker:         cellAt(r, int(ColumnMoniker)),
+			OperatorAddress: cellAt(r, int(ColumnOperatorAddress)),
+			Introduction:    cellAt(r, int(ColumnIntroduction)),
+		})
+	}
+	return out, nil
+}
+
+// EnsureHarvestLayout provisions the assessment layer on startup: the N-Y header
+// row + criterion checkboxes on the source tab, and the "{source}-evidence" tab.
+func EnsureHarvestLayout(ctx context.Context, api API, spreadsheetID, sheetName string) error {
+	header := make([]interface{}, len(derivedColumns))
+	for i, c := range derivedColumns {
+		header[i] = derivedHeaders[c]
+	}
+	hr := fmt.Sprintf("%s!%s1:%s1", sheetName, columnLetter(derivedColumns[0]), columnLetter(derivedColumns[len(derivedColumns)-1]))
+	if err := api.UpdateRow(ctx, spreadsheetID, hr, header); err != nil {
+		return fmt.Errorf("write assessment headers: %w", err)
+	}
+	if err := api.SetCheckbox(ctx, spreadsheetID, sheetName, criterionColumns[0], criterionColumns[len(criterionColumns)-1]+1); err != nil {
+		return fmt.Errorf("set criterion checkboxes: %w", err)
+	}
+	if _, err := api.EnsureTab(ctx, spreadsheetID, EvidenceTabName(sheetName)); err != nil {
+		return fmt.Errorf("ensure evidence tab: %w", err)
+	}
+	return nil
+}
+
+// WriteHarvestColumns writes the deterministic columns /harvest owns: Red flags
+// (W) and Engagement (X). Refreshed each run.
+func WriteHarvestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, redFlags, engagement string) error {
+	return UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
+		ColumnRedFlags:   redFlags,
+		ColumnEngagement: engagement,
+	})
+}
+
+// WriteDigestColumns writes the columns /harvest-import owns: Readiness (N),
+// Summary (O), Evidence links (Y) as text, and the seven criterion checkboxes
+// (P-V) as booleans in criterionColumns order.
+func WriteDigestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, readiness, summary, evidenceLinks string, criteria []bool) error {
+	if err := UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
+		ColumnReadiness:     readiness,
+		ColumnSummary:       summary,
+		ColumnEvidenceLinks: evidenceLinks,
+	}); err != nil {
+		return err
+	}
+	return writeCriteria(ctx, api, spreadsheetID, sheetName, row, criteria)
+}
+
+func writeCriteria(ctx context.Context, api API, spreadsheetID, sheetName string, row int, criteria []bool) error {
+	vals := make([]interface{}, len(criterionColumns))
+	for i := range criterionColumns {
+		vals[i] = i < len(criteria) && criteria[i]
+	}
+	rangeA1 := fmt.Sprintf("%s!%s%d:%s%d", sheetName,
+		columnLetter(criterionColumns[0]), row,
+		columnLetter(criterionColumns[len(criterionColumns)-1]), row)
+	if err := api.UpdateRow(ctx, spreadsheetID, rangeA1, vals); err != nil {
+		return fmt.Errorf("write criterion checkboxes: %w", err)
+	}
+	return nil
+}
+
+// MarkDuplicateRow flags a superseded duplicate row: Readiness becomes
+// "Duplicate of row N" and the other assessment cells are cleared, so a stale
+// score does not linger. The human columns (A-M) are left untouched.
+func MarkDuplicateRow(ctx context.Context, api API, spreadsheetID, sheetName string, row, keptRow int) error {
+	if err := UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
+		ColumnReadiness:     fmt.Sprintf("Duplicate of row %d", keptRow),
+		ColumnSummary:       "",
+		ColumnRedFlags:      "",
+		ColumnEngagement:    "",
+		ColumnEvidenceLinks: "",
+	}); err != nil {
+		return err
+	}
+	return writeCriteria(ctx, api, spreadsheetID, sheetName, row, nil) // all false
+}
+
+var evidenceHeader = []interface{}{"Candidate", "Row", "Channel", "Source", "Timestamp", "Permalink", "Text"}
+
+// WriteEvidence rewrites the evidence tab from scratch (ensure, clear A-G, write
+// header + rows).
+func WriteEvidence(ctx context.Context, api API, spreadsheetID, evidenceTab string, rows [][]interface{}) error {
+	if _, err := api.EnsureTab(ctx, spreadsheetID, evidenceTab); err != nil {
+		return fmt.Errorf("ensure evidence tab: %w", err)
+	}
+	if err := api.ClearValues(ctx, spreadsheetID, evidenceTab+"!A:G"); err != nil {
+		return fmt.Errorf("clear evidence tab: %w", err)
+	}
+	matrix := append([][]interface{}{evidenceHeader}, rows...)
+	if err := api.WriteRows(ctx, spreadsheetID, evidenceTab+"!A1", matrix); err != nil {
+		return fmt.Errorf("write evidence tab: %w", err)
 	}
 	return nil
 }
