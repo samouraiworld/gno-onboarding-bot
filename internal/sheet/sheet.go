@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Column int
@@ -319,11 +320,21 @@ func rowIsEmpty(r []interface{}) bool {
 	return true
 }
 
+// appendMu serializes the read-then-write inside AppendCandidateRow. discordgo
+// runs each interaction in its own goroutine, so two near-simultaneous appends
+// could otherwise both read the data band, compute the same target row, and have
+// the second write silently clobber the first. A single process-wide lock here
+// covers every caller (both /submit-request and /candidate-testnet) at once.
+var appendMu sync.Mutex
+
 // AppendCandidateRow places a candidate row in the first fully-empty row of the
 // sheet's A:M data band (starting at row 2). It never overwrites existing data:
 // rows with any non-empty cell are skipped, and if no gap exists the row is
 // written one past the last row with any data.
 func AppendCandidateRow(ctx context.Context, api API, spreadsheetID, sheetName string, row CandidateRow) (int, error) {
+	appendMu.Lock()
+	defer appendMu.Unlock()
+
 	dataRange := fmt.Sprintf("%s!A2:%s", sheetName, columnLetter(Column(len(Headers)-1)))
 	data, err := api.Get(ctx, spreadsheetID, dataRange)
 	if err != nil {
