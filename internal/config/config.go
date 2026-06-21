@@ -23,6 +23,8 @@ type Config struct {
 	SheetID                  string `yaml:"sheet_id"`
 	SheetName                string `yaml:"sheet_name"`
 	ReviewSLA                string `yaml:"review_sla"`
+	GnoRPCEndpoint           string `yaml:"gno_rpc_endpoint"`
+	GnoWebBaseURL            string `yaml:"gnoweb_base_url"`
 }
 
 func Load(path string) (*Config, error) {
@@ -55,6 +57,8 @@ func (c Config) validate() error {
 		"sheet_id":                    c.SheetID,
 		"sheet_name":                  c.SheetName,
 		"review_sla":                  c.ReviewSLA,
+		"gno_rpc_endpoint":            c.GnoRPCEndpoint,
+		"gnoweb_base_url":             c.GnoWebBaseURL,
 	}
 	var missing []string
 	for key, value := range required {

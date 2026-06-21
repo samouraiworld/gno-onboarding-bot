@@ -1,13 +1,15 @@
 package notify
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
 )
 
 func TestBuildAndParseSubmissionEmbed(t *testing.T) {
-	embed := BuildSubmissionEmbed(58, "123456789012345678", "alice / gnovaloper1abc", "https://example.com/valoper/alice", "Hi, I'm alice")
+	embed := BuildSubmissionEmbed(58, "123456789012345678", "alice", "g1abc", "https://example.com/valoper/alice", "Hi, I'm alice")
 	msg := &discordgo.Message{Embeds: []*discordgo.MessageEmbed{embed}}
 
 	row, candidateID, valoperLink, err := ParseSubmissionEmbed(msg)
@@ -22,6 +24,23 @@ func TestBuildAndParseSubmissionEmbed(t *testing.T) {
 	}
 	if valoperLink != "https://example.com/valoper/alice" {
 		t.Errorf("valoperLink = %q, want %q", valoperLink, "https://example.com/valoper/alice")
+	}
+}
+
+func TestBuildSubmissionEmbed_TruncatesIntroduction(t *testing.T) {
+	long := strings.Repeat("a", 2000)
+	embed := BuildSubmissionEmbed(1, "123", "m", "g1abc", "https://x", long)
+	var intro string
+	for _, f := range embed.Fields {
+		if f.Name == FieldIntroduction {
+			intro = f.Value
+		}
+	}
+	if n := utf8.RuneCountInString(intro); n > 1024 {
+		t.Errorf("introduction = %d runes, want <= 1024", n)
+	}
+	if !strings.HasSuffix(intro, "…") {
+		t.Error("expected ellipsis suffix on truncated introduction")
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"onboardingbot/internal/handlers"
 	"onboardingbot/internal/sheet"
 	"onboardingbot/internal/templates"
+	"onboardingbot/internal/valoper"
 )
 
 func main() {
@@ -35,6 +36,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("create sheets client: %v", err)
 	}
+	if err := sheet.Ensure(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure sheet tab/headers: %v", err)
+	}
+	if err := sheet.EnsureApprovedView(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure approved-view tab: %v", err)
+	}
+	if err := sheet.EnsureStatusDropdown(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure status dropdown: %v", err)
+	}
+	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure status colors: %v", err)
+	}
+	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
+		log.Fatalf("ensure frozen header (source): %v", err)
+	}
+	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
+		log.Fatalf("ensure frozen header (approved): %v", err)
+	}
 
 	s, err := discordgo.New("Bot " + cfg.DiscordToken)
 	if err != nil {
@@ -55,7 +74,6 @@ func main() {
 
 	registrations := []func(*discordgo.Session, *config.Config, sheet.API, *templates.Templates) error{
 		handlers.RegisterCandidate,
-		handlers.RegisterSubmit,
 		handlers.RegisterRequestMissingInfo,
 		handlers.RegisterAskToRetry,
 		handlers.RegisterEscalateToCall,
@@ -65,6 +83,11 @@ func main() {
 		if err := register(s, cfg, sheetsClient, tpl); err != nil {
 			log.Fatalf("register command: %v", err)
 		}
+	}
+
+	renderer := valoper.NewClient(cfg.GnoRPCEndpoint)
+	if err := handlers.RegisterSubmit(s, cfg, sheetsClient, tpl, renderer); err != nil {
+		log.Fatalf("register submit command: %v", err)
 	}
 
 	log.Println("bot is running, press Ctrl+C to exit")
