@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTempConfig(t *testing.T, content string) string {
@@ -89,5 +90,32 @@ func TestLoad_InvalidHarvestSince(t *testing.T) {
 	path := writeTempConfig(t, validConfig+"\nharvest_since: \"not-a-timestamp\"\n")
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected error for invalid harvest_since")
+	}
+}
+
+func TestLoad_ValidatorPollDefault(t *testing.T) {
+	cfg, err := Load(writeTempConfig(t, validConfig))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ValidatorPollEvery != 5*time.Minute {
+		t.Errorf("ValidatorPollEvery = %v, want 5m", cfg.ValidatorPollEvery)
+	}
+}
+
+func TestLoad_ValidatorPollCustom(t *testing.T) {
+	cfg, err := Load(writeTempConfig(t, validConfig+"\nvalidator_poll_interval: \"30s\"\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.ValidatorPollEvery != 30*time.Second {
+		t.Errorf("ValidatorPollEvery = %v, want 30s", cfg.ValidatorPollEvery)
+	}
+}
+
+func TestLoad_InvalidValidatorPoll(t *testing.T) {
+	path := writeTempConfig(t, validConfig+"\nvalidator_poll_interval: \"not-a-duration\"\n")
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error for invalid validator_poll_interval")
 	}
 }
