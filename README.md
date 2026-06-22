@@ -11,7 +11,7 @@ The bot registers these Discord commands (see `internal/handlers`):
 - request missing info, ask-to-retry, escalate-to-call, approve — reviewer decisions in `#validator-review`. **Approve does not grant the `Testnet Validator` role**: it only moves the candidate to `GovDAO pending` and forwards them to the GovDAO.
 - `/harvest` and `/harvest-import` — the end-of-window competency pass (reviewers only); needs the privileged Message Content intent. See [docs/harvest.md](docs/harvest.md).
 
-In addition, a background **activation poller** checks the chain's active validator set every `validator_poll_interval` and grants the `Testnet Validator` role (removing the candidate role, advancing the row to `GovDAO submitted`, and DMing the candidate) once an approved candidate's validator is admitted to the active set by the GovDAO. The candidate's signing address is derived on the fly from their operator address via the `r/gnops/valopers` realm and matched against the node's `validators` RPC — no extra Sheet column is stored.
+In addition, a background **activation poller** checks the chain's active validator set every `validator_poll_interval` and grants the `Testnet Validator` role (removing the candidate role, advancing the row to `GovDAO approved`, and DMing the candidate) once an approved candidate's validator is admitted to the active set by the GovDAO. The candidate's signing address is derived on the fly from their operator address via the `r/gnops/valopers` realm and matched against the node's `validators` RPC — no extra Sheet column is stored.
 
 ## Setup
 

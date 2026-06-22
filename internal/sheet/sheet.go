@@ -85,9 +85,8 @@ const (
 	StatusChallengeInProgress = "Challenge in progress"
 	StatusNeedsRetry          = "Needs retry"
 	StatusDeclined            = "Declined"
-	StatusApproved            = "Approved"
 	StatusGovDAOPending       = "GovDAO pending"
-	StatusGovDAOSubmitted     = "GovDAO submitted"
+	StatusGovDAOApproved      = "GovDAO approved"
 )
 
 type CandidateRow struct {
@@ -185,9 +184,8 @@ var StatusColors = map[string]string{
 	StatusChallengeInProgress: "#fff2a8",
 	StatusNeedsRetry:          "#fcd5b4",
 	StatusDeclined:            "#f4c7c3",
-	StatusApproved:            "#c2eebc",
 	StatusGovDAOPending:       "#b6d7f5",
-	StatusGovDAOSubmitted:     "#d9c4ec",
+	StatusGovDAOApproved:      "#c2eebc",
 }
 
 // EnsureStatusColors installs the status-row coloring rules on sheetName,
@@ -209,9 +207,8 @@ var AllStatuses = []string{
 	StatusChallengeInProgress,
 	StatusNeedsRetry,
 	StatusDeclined,
-	StatusApproved,
 	StatusGovDAOPending,
-	StatusGovDAOSubmitted,
+	StatusGovDAOApproved,
 }
 
 // EnsureStatusDropdown installs the dropdown on column C, sized to the
@@ -322,8 +319,8 @@ func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheet
 
 // approvedViewFormula builds the spilling array formula for the "-approved"
 // tab: a single QUERY selecting both GovDAO statuses, ordered so "GovDAO
-// submitted" rows sort above "GovDAO pending" rows ("submitted" > "pending",
-// so `order by desc`). IFERROR renders "" when neither category has rows.
+// approved" rows sort above "GovDAO pending" rows ("approved" < "pending",
+// so `order by asc`). IFERROR renders "" when neither category has rows.
 //
 // A single self-spilling QUERY is used deliberately: IFS/VSTACK cannot return a
 // multi-row array from a branch (Sheets raises "IFS range size inconsistent"),
@@ -332,8 +329,8 @@ func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheet
 // ("," or ";"); the SQL is a single string literal, so it is locale-independent.
 func approvedViewFormula(sourceSheetName, lastCol, statusCol, sep string) string {
 	src := fmt.Sprintf("'%s'!A2:%s", sourceSheetName, lastCol)
-	sql := fmt.Sprintf(`"select * where %s = '%s' or %s = '%s' order by %s desc"`,
-		statusCol, StatusGovDAOSubmitted, statusCol, StatusGovDAOPending, statusCol)
+	sql := fmt.Sprintf(`"select * where %s = '%s' or %s = '%s' order by %s asc"`,
+		statusCol, StatusGovDAOApproved, statusCol, StatusGovDAOPending, statusCol)
 	return fmt.Sprintf(`=IFERROR(QUERY(%s%s %s%s 0)%s "")`, src, sep, sql, sep, sep)
 }
 
@@ -462,7 +459,7 @@ func EvidenceTabName(sourceSheetName string) string { return sourceSheetName + "
 // should be left untouched by the harvest pass. Case- and whitespace-tolerant.
 func IsValidated(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case strings.ToLower(StatusApproved), strings.ToLower(StatusGovDAOPending), strings.ToLower(StatusGovDAOSubmitted):
+	case strings.ToLower(StatusGovDAOPending), strings.ToLower(StatusGovDAOApproved):
 		return true
 	}
 	return false

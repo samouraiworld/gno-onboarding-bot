@@ -351,16 +351,16 @@ func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
 	if strings.Contains(api.setFormulaFormula, "IFS(") || strings.Contains(api.setFormulaFormula, "VSTACK(") {
 		t.Errorf("formula must not use IFS/VSTACK (they can't spill arrays): %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "GovDAO submitted") || !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
+	if !strings.Contains(api.setFormulaFormula, "GovDAO approved") || !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
 		t.Errorf("formula missing a GovDAO status: %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "order by") {
-		t.Errorf("formula missing 'order by' (submitted above pending): %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "order by") || !strings.Contains(api.setFormulaFormula, "asc") {
+		t.Errorf("formula missing ascending 'order by' (approved above pending): %s", api.setFormulaFormula)
 	}
-	subIdx := strings.Index(api.setFormulaFormula, "GovDAO submitted")
+	appIdx := strings.Index(api.setFormulaFormula, "GovDAO approved")
 	penIdx := strings.Index(api.setFormulaFormula, "GovDAO pending")
-	if subIdx < 0 || penIdx < 0 || subIdx >= penIdx {
-		t.Errorf("submitted must appear before pending: %s", api.setFormulaFormula)
+	if appIdx < 0 || penIdx < 0 || appIdx >= penIdx {
+		t.Errorf("approved must appear before pending: %s", api.setFormulaFormula)
 	}
 	// QUERY must pass headers=0 so it never lifts the first data row into a header.
 	if !strings.Contains(api.setFormulaFormula, ", 0)") {
@@ -470,14 +470,14 @@ func TestEnsure_SkipsHeadersWhenPresent(t *testing.T) {
 
 func TestUpdateFields_Error(t *testing.T) {
 	api := &fakeAPI{updateErr: context.DeadlineExceeded}
-	err := UpdateFields(context.Background(), api, "sheet-id", "Sheet1", 1, map[Column]string{ColumnStatus: StatusApproved})
+	err := UpdateFields(context.Background(), api, "sheet-id", "Sheet1", 1, map[Column]string{ColumnStatus: StatusGovDAOApproved})
 	if err == nil {
 		t.Fatal("expected error")
 	}
 }
 
 func TestIsValidated(t *testing.T) {
-	for _, s := range []string{StatusApproved, StatusGovDAOPending, StatusGovDAOSubmitted, " approved ", "GOVDAO SUBMITTED"} {
+	for _, s := range []string{StatusGovDAOPending, StatusGovDAOApproved, " govdao approved ", "GOVDAO PENDING"} {
 		if !IsValidated(s) {
 			t.Errorf("IsValidated(%q) = false, want true", s)
 		}
@@ -495,7 +495,7 @@ func TestIsReopenable(t *testing.T) {
 			t.Errorf("IsReopenable(%q) = false, want true", s)
 		}
 	}
-	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusApproved, StatusGovDAOPending, "", "rejected"} {
+	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusGovDAOApproved, StatusGovDAOPending, "", "rejected"} {
 		if IsReopenable(s) {
 			t.Errorf("IsReopenable(%q) = true, want false", s)
 		}

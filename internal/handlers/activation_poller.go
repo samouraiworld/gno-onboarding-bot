@@ -23,7 +23,7 @@ type chainClient interface {
 
 // StartActivationPoller launches a goroutine that, every `every`, promotes
 // "GovDAO pending" candidates whose validator has joined the active set:
-// it writes "GovDAO submitted", grants the Testnet Validator role (removing the
+// it writes "GovDAO approved", grants the Testnet Validator role (removing the
 // Candidate role), and DMs the candidate. Runs until ctx is cancelled. The
 // returned channel is closed once the goroutine has observed ctx.Done() and
 // exited, so callers can wait for any in-flight tick to finish before
@@ -94,9 +94,9 @@ func activateCandidate(ctx context.Context, s *discordgo.Session, cfg *config.Co
 	}
 	// Sheet write before any role mutation (invariant).
 	if err := sheet.UpdateFields(ctx, api, cfg.SheetID, cfg.SheetName, r.Row, map[sheet.Column]string{
-		sheet.ColumnStatus: sheet.StatusGovDAOSubmitted,
+		sheet.ColumnStatus: sheet.StatusGovDAOApproved,
 	}); err != nil {
-		log.Printf("activation: set GovDAO submitted row %d: %v", r.Row, err)
+		log.Printf("activation: set GovDAO approved row %d: %v", r.Row, err)
 		return
 	}
 	if err := s.GuildMemberRoleAdd(cfg.GuildID, candidateID, cfg.ValidatorRoleID); err != nil {
