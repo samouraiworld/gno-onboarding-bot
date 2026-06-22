@@ -182,6 +182,7 @@ type API interface {
 	SpreadsheetLocale(ctx context.Context, spreadsheetID string) (string, error)
 	SetDropdown(ctx context.Context, spreadsheetID, sheetName string, col Column, startRow, endRow int, values []string) error
 	SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error
+	SetLinkedLines(ctx context.Context, spreadsheetID, sheetName string, row, col int, lines []LinkedLine) error
 	SetStatusColors(ctx context.Context, spreadsheetID, sheetName string, statusCol Column, mapping map[string]string) error
 	FreezeHeaderRow(ctx context.Context, spreadsheetID, sheetName string) error
 	SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error
@@ -556,16 +557,25 @@ func WriteHarvestColumns(ctx context.Context, api API, spreadsheetID, sheetName 
 	})
 }
 
+// LinkedLine is one line of a multi-link cell: Text is the visible label and
+// URL the link it points to.
+type LinkedLine struct {
+	Text string
+	URL  string
+}
+
 // WriteDigestColumns writes the columns /harvest-import owns: Readiness (P),
-// Summary (Q), Evidence links (AA) as text, and the seven criterion checkboxes
-// (R-X) as booleans in criterionColumns order.
-func WriteDigestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, readiness, summary, evidenceLinks string, criteria []bool) error {
+// Summary (Q), Evidence links (AA) as titled clickable links, and the seven
+// criterion checkboxes (R-X) as booleans in criterionColumns order.
+func WriteDigestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, readiness, summary string, evidence []LinkedLine, criteria []bool) error {
 	if err := UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
-		ColumnReadiness:     readiness,
-		ColumnSummary:       summary,
-		ColumnEvidenceLinks: evidenceLinks,
+		ColumnReadiness: readiness,
+		ColumnSummary:   summary,
 	}); err != nil {
 		return err
+	}
+	if err := api.SetLinkedLines(ctx, spreadsheetID, sheetName, row, int(ColumnEvidenceLinks), evidence); err != nil {
+		return fmt.Errorf("write evidence links: %w", err)
 	}
 	return writeCriteria(ctx, api, spreadsheetID, sheetName, row, criteria)
 }

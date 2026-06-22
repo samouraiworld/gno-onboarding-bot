@@ -92,8 +92,9 @@ column); the skill additionally judges described unsafe handling.
 and `reviewer_context`. Secrets in any text are replaced with `[REDACTED:<kind>]`.
 
 `digest.json` (skill → bot): per candidate `row`, `readiness`, `readiness_score`,
-`summary`, the seven `criteria` states, and `evidence_links`. Only `row` locates
-the Sheet row.
+`summary`, the seven `criteria` states, and `evidence_links` (each a
+`{title, url}`, rendered as a titled clickable link in the Evidence links
+column). Only `row` locates the Sheet row.
 
 ## Prerequisites
 
