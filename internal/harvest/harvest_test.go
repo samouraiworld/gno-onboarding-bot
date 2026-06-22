@@ -167,7 +167,7 @@ func TestBuild_ValoperStatePropagates(t *testing.T) {
 func TestCriteriaBools(t *testing.T) {
 	// Partial map: only setup (index 0) and valoper (index 3) are found; tx is
 	// explicitly not_found; the rest are absent. Pins both the Criteria order and
-	// the "missing/non-found => false" rule that drives checkboxes P-V.
+	// the "missing/non-found => false" rule that drives checkboxes R-X.
 	c := DigestCandidate{Criteria: map[string]string{
 		"setup":   StateFound,
 		"valoper": StateFound,

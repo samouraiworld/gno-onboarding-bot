@@ -81,7 +81,7 @@ go run . -config config.yaml
 - `internal/templates` — loads `templates.yaml` and renders it as Go `text/template`.
 - `internal/forms` — modal input validation helpers.
 - `internal/rowref` — encodes a Sheet row number + Discord candidate ID into short strings threaded through embed footers and modal `custom_id`s.
-- `internal/sheet` — the Sheet schema (13 intake columns A-M plus the harvest assessment columns N-Y) and the Google Sheets API client.
+- `internal/sheet` — the Sheet schema (15 intake columns A-O plus the harvest assessment columns P-AA) and the Google Sheets API client.
 - `internal/notify` — builds/parses the `#validator-review` notification embed.
 - `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks).
 
