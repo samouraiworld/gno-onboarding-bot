@@ -55,6 +55,11 @@ type fakeAPI struct {
 	linkedTextURL    string
 	linkedTextErr    error
 
+	linkedLinesRow   int
+	linkedLinesCol   int
+	linkedLinesLines []LinkedLine
+	linkedLinesErr   error
+
 	statusColorsCalled  bool
 	statusColorsMapping map[string]string
 	statusColorsErr     error
@@ -139,6 +144,13 @@ func (f *fakeAPI) SetLinkedText(ctx context.Context, spreadsheetID, sheetName st
 	f.linkedTextText = text
 	f.linkedTextURL = url
 	return f.linkedTextErr
+}
+
+func (f *fakeAPI) SetLinkedLines(ctx context.Context, spreadsheetID, sheetName string, row, col int, lines []LinkedLine) error {
+	f.linkedLinesRow = row
+	f.linkedLinesCol = col
+	f.linkedLinesLines = lines
+	return f.linkedLinesErr
 }
 
 func (f *fakeAPI) SetStatusColors(ctx context.Context, spreadsheetID, sheetName string, statusCol Column, mapping map[string]string) error {
@@ -538,15 +550,26 @@ func TestWriteHarvestColumns(t *testing.T) {
 func TestWriteDigestColumns(t *testing.T) {
 	api := &fakeAPI{}
 	criteria := []bool{true, true, false, false, true, false, true} // setup,sync,tx,valoper,ops,comms,safety
-	if err := WriteDigestColumns(context.Background(), api, "id", "Candidates", 2, "High (6/7)", "ok", "https://l", criteria); err != nil {
+	evidence := []LinkedLine{{Text: "Submission", URL: "https://l"}}
+	if err := WriteDigestColumns(context.Background(), api, "id", "Candidates", 2, "High (6/7)", "ok", evidence, criteria); err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
 	for _, u := range api.updates {
 		got[u.rangeA1] = u.value
 	}
-	if got["Candidates!N2"] != "High (6/7)" || got["Candidates!O2"] != "ok" || got["Candidates!Y2"] != "https://l" {
+	if got["Candidates!N2"] != "High (6/7)" || got["Candidates!O2"] != "ok" {
 		t.Errorf("text columns = %v", got)
+	}
+	// Evidence links go through the rich-text path, not a plain value write.
+	if got["Candidates!Y2"] != "" {
+		t.Errorf("evidence links should not be written as a plain value, got %q", got["Candidates!Y2"])
+	}
+	if api.linkedLinesCol != int(ColumnEvidenceLinks) || api.linkedLinesRow != 2 {
+		t.Errorf("linked lines target = row %d col %d, want row 2 col %d", api.linkedLinesRow, api.linkedLinesCol, int(ColumnEvidenceLinks))
+	}
+	if len(api.linkedLinesLines) != 1 || api.linkedLinesLines[0] != (LinkedLine{Text: "Submission", URL: "https://l"}) {
+		t.Errorf("linked lines = %#v", api.linkedLinesLines)
 	}
 	if api.updateRowRange != "Candidates!P2:V2" {
 		t.Errorf("criteria range = %q, want Candidates!P2:V2", api.updateRowRange)
@@ -560,6 +583,35 @@ func TestWriteDigestColumns(t *testing.T) {
 		if api.updateRowValues[i] != want {
 			t.Errorf("criterion[%d] = %v, want %v", i, api.updateRowValues[i], want)
 		}
+	}
+}
+
+func TestLinkedCellRuns(t *testing.T) {
+	text, runs := linkedCellRuns([]LinkedLine{
+		{Text: "Submission", URL: "https://a"},
+		{Text: "Sync proof", URL: "https://b"},
+	})
+	if text != "Submission\nSync proof" {
+		t.Fatalf("text = %q", text)
+	}
+	// One run per link, plus a link-closing run on the separating newline so the
+	// first link does not bleed into the second line.
+	want := []linkRun{
+		{start: 0, uri: "https://a"},
+		{start: 10, uri: ""},
+		{start: 11, uri: "https://b"},
+	}
+	if len(runs) != len(want) {
+		t.Fatalf("got %d runs, want %d: %#v", len(runs), len(want), runs)
+	}
+	for i := range want {
+		if runs[i] != want[i] {
+			t.Errorf("run[%d] = %#v, want %#v", i, runs[i], want[i])
+		}
+	}
+
+	if text, runs := linkedCellRuns(nil); text != "" || len(runs) != 0 {
+		t.Errorf("empty input: text=%q runs=%#v", text, runs)
 	}
 }
 

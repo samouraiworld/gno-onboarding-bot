@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -171,12 +172,51 @@ func (c *GoogleSheetsClient) SetDropdown(ctx context.Context, spreadsheetID, she
 	return err
 }
 
-// SetLinkedText writes a single cell with text and a hyperlink (rich text),
-// locale-independent — no formula involved.
-func (c *GoogleSheetsClient) SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error {
+// linkRun is a resolved formatting run for a multi-link cell. An empty uri ends
+// the previous link so the separator and any later text stay unlinked.
+type linkRun struct {
+	start int
+	uri   string
+}
+
+// linkedCellRuns renders lines into one cell string (one line per link,
+// newline-separated) plus the formatting runs that confine each link to its own
+// line. Offsets are UTF-16 code units, as the Sheets API expects.
+func linkedCellRuns(lines []LinkedLine) (string, []linkRun) {
+	var b strings.Builder
+	var runs []linkRun
+	offset := 0 // running UTF-16 length of what's been written
+	for i, ln := range lines {
+		if i > 0 {
+			runs = append(runs, linkRun{start: offset}) // close previous link
+			b.WriteString("\n")
+			offset++ // newline is one UTF-16 unit
+		}
+		runs = append(runs, linkRun{start: offset, uri: ln.URL})
+		b.WriteString(ln.Text)
+		offset += utf16Len(ln.Text)
+	}
+	return b.String(), runs
+}
+
+func utf16Len(s string) int { return len(utf16.Encode([]rune(s))) }
+
+// SetLinkedLines writes one cell containing one hyperlink per line: each line's
+// text links to its URL, confined to that line. Replaces the cell's prior
+// content and formatting; an empty lines slice clears the cell.
+func (c *GoogleSheetsClient) SetLinkedLines(ctx context.Context, spreadsheetID, sheetName string, row, col int, lines []LinkedLine) error {
 	sheetID, err := c.sheetIDByName(ctx, spreadsheetID, sheetName)
 	if err != nil {
 		return err
+	}
+	text, runs := linkedCellRuns(lines)
+	formatRuns := make([]*sheets.TextFormatRun, len(runs))
+	for i, r := range runs {
+		f := &sheets.TextFormat{}
+		if r.uri != "" {
+			f.Link = &sheets.Link{Uri: r.uri}
+		}
+		formatRuns[i] = &sheets.TextFormatRun{StartIndex: int64(r.start), Format: f}
 	}
 	_, err = c.svc.Spreadsheets.BatchUpdate(spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
 		Requests: []*sheets.Request{{
@@ -191,10 +231,7 @@ func (c *GoogleSheetsClient) SetLinkedText(ctx context.Context, spreadsheetID, s
 				Rows: []*sheets.RowData{{
 					Values: []*sheets.CellData{{
 						UserEnteredValue: &sheets.ExtendedValue{StringValue: &text},
-						TextFormatRuns: []*sheets.TextFormatRun{{
-							StartIndex: 0,
-							Format:     &sheets.TextFormat{Link: &sheets.Link{Uri: url}},
-						}},
+						TextFormatRuns:   formatRuns,
 					}},
 				}},
 				Fields: "userEnteredValue,textFormatRuns",
@@ -202,6 +239,13 @@ func (c *GoogleSheetsClient) SetLinkedText(ctx context.Context, spreadsheetID, s
 		}},
 	}).Context(ctx).Do()
 	return err
+}
+
+// SetLinkedText writes a single cell with text and a hyperlink (rich text),
+// locale-independent — no formula involved. It is the single-link case of
+// SetLinkedLines.
+func (c *GoogleSheetsClient) SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error {
+	return c.SetLinkedLines(ctx, spreadsheetID, sheetName, row, col, []LinkedLine{{Text: text, URL: url}})
 }
 
 // SetStatusColors replaces this sheet's conditional formatting rules with one
