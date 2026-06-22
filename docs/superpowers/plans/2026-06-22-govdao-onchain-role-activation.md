@@ -2,15 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Amendment (post-implementation):** the terminal status was later renamed from
+> `GovDAO submitted` to **`GovDAO approved`** (reusing the former `Approved` slot, now
+> removed). Status references in this plan have been updated to the new name; the shipped
+> code uses `sheet.StatusGovDAOApproved`, and the `-approved` view QUERY (outside this plan,
+> in `sheet.go`) was switched to ascending order so approved rows stay above pending ones.
+
 **Goal:** Move the `Testnet Validator` role grant from the reviewer's Approve action to an automatic on-chain check that fires once the candidate's validator joins the active set.
 
-**Architecture:** Approve only sets status `GovDAO pending`. A new in-bot poller periodically reads `GovDAO pending` rows, derives each candidate's signing address from their operator address via the valopers realm, and when that signing address appears in the node's `/validators` set, writes `GovDAO submitted` then grants the role and DMs the candidate. The candidate's Discord ID is read back from the column-B hyperlink already persisted at submit time. No Sheet schema change.
+**Architecture:** Approve only sets status `GovDAO pending`. A new in-bot poller periodically reads `GovDAO pending` rows, derives each candidate's signing address from their operator address via the valopers realm, and when that signing address appears in the node's `/validators` set, writes `GovDAO approved` then grants the role and DMs the candidate. The candidate's Discord ID is read back from the column-B hyperlink already persisted at submit time. No Sheet schema change.
 
 **Tech Stack:** Go, `github.com/bwmarrin/discordgo`, `google.golang.org/api/sheets/v4`, gno JSON-RPC (`abci_query` / `validators`).
 
 ## Global Constraints
 
-- **Sheet write before any Discord role mutation** — in activation, write `GovDAO submitted` before adding/removing roles.
+- **Sheet write before any Discord role mutation** — in activation, write `GovDAO approved` before adding/removing roles.
 - **No Sheet schema change** — signing address is derived, never stored; columns A–Y untouched.
 - **Operator address (column K)** stays the dedup key and valopers realm key; it is never replaced.
 - **Never log `config.yaml` / `service-account.json` contents.**
@@ -727,7 +733,7 @@ type chainClient interface {
 
 // StartActivationPoller launches a goroutine that, every `every`, promotes
 // "GovDAO pending" candidates whose validator has joined the active set:
-// it writes "GovDAO submitted", grants the Testnet Validator role (removing the
+// it writes "GovDAO approved", grants the Testnet Validator role (removing the
 // Candidate role), and DMs the candidate. Runs until ctx is cancelled.
 func StartActivationPoller(ctx context.Context, s *discordgo.Session, cfg *config.Config, api sheet.API, tpl *templates.Templates, chain chainClient, every time.Duration) {
 	go func() {
@@ -792,9 +798,9 @@ func activateCandidate(ctx context.Context, s *discordgo.Session, cfg *config.Co
 	}
 	// Sheet write before any role mutation (invariant).
 	if err := sheet.UpdateFields(ctx, api, cfg.SheetID, cfg.SheetName, r.Row, map[sheet.Column]string{
-		sheet.ColumnStatus: sheet.StatusGovDAOSubmitted,
+		sheet.ColumnStatus: sheet.StatusGovDAOApproved,
 	}); err != nil {
-		log.Printf("activation: set GovDAO submitted row %d: %v", r.Row, err)
+		log.Printf("activation: set GovDAO approved row %d: %v", r.Row, err)
 		return
 	}
 	if err := s.GuildMemberRoleAdd(cfg.GuildID, candidateID, cfg.ValidatorRoleID); err != nil {
@@ -842,8 +848,8 @@ Append to `MANUAL_TESTING.md` a new section:
 ## GovDAO on-chain role activation
 
 1. **Approve grants no role.** Run **Approve** on a submission. Expect: tracker row → `GovDAO pending`, candidate DM received, GovDAO contact pinged, and the candidate's roles **unchanged** (still `Testnet Validator Candidate`, no `Testnet Validator`).
-2. **Poller activates on-chain membership.** With a candidate whose valoper's signing address is in `<gno_rpc_endpoint>/validators`, wait one `validator_poll_interval`. Expect: tracker row → `GovDAO submitted`, the `Testnet Validator` role granted and `Testnet Validator Candidate` removed, and the `activated` DM received.
-3. **No double-processing.** On the next tick, the now-`GovDAO submitted` row is left untouched (no duplicate DM/role calls in the logs).
+2. **Poller activates on-chain membership.** With a candidate whose valoper's signing address is in `<gno_rpc_endpoint>/validators`, wait one `validator_poll_interval`. Expect: tracker row → `GovDAO approved`, the `Testnet Validator` role granted and `Testnet Validator Candidate` removed, and the `activated` DM received.
+3. **No double-processing.** On the next tick, the now-`GovDAO approved` row is left untouched (no duplicate DM/role calls in the logs).
 4. **Unresolvable Discord ID.** For a `GovDAO pending` row whose column-B cell has no `https://discord.com/users/<id>` hyperlink, expect a single log line asking to grant the role manually, and no status change.
 ```
 
@@ -858,6 +864,6 @@ git commit -m "feat(handlers): add on-chain validator activation poller"
 
 ## Self-Review notes
 
-- **Spec coverage:** Approve-no-role (Task 6), ParseRender signing address (Task 1), ValidatorSet (Task 2), Discord-ID resolution = CellLink + DiscordIDFromUserURL (Task 5), poller (Task 7), config interval (Task 3), template reword + activated (Task 4), status `GovDAO submitted` reuse (Task 7 `activateCandidate`), edge cases (empty signing addr / unknown address / unresolvable ID — handled by `continue`/skip+log in Task 7). All spec sections map to a task.
+- **Spec coverage:** Approve-no-role (Task 6), ParseRender signing address (Task 1), ValidatorSet (Task 2), Discord-ID resolution = CellLink + DiscordIDFromUserURL (Task 5), poller (Task 7), config interval (Task 3), template reword + activated (Task 4), status `GovDAO approved` reuse (Task 7 `activateCandidate`), edge cases (empty signing addr / unknown address / unresolvable ID — handled by `continue`/skip+log in Task 7). All spec sections map to a task.
 - **Type consistency:** `ParseRender` is 5-value in Tasks 1, 7 and both valoper tests. `ValidatorSet` returns `map[string]struct{}` in Tasks 2, 7. `CellLink(ctx, id, name, row, col int)` identical in interface (Task 5), real impl (Task 5), fake (Task 5), and caller (Task 7). `StartActivationPoller` signature matches its `main.go` call. `ValidatorPollEvery` is `time.Duration` in Tasks 3 and 7.
 - **No placeholders:** every code step contains the full code.

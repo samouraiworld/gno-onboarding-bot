@@ -3,6 +3,13 @@
 **Date:** 2026-06-22
 **Status:** Design approved, pending implementation plan
 
+> **Amendment (post-implementation):** the terminal status was renamed from the original
+> `GovDAO submitted` to **`GovDAO approved`**. It reuses the former `Approved` status slot
+> (now removed) rather than introducing a new value. Because `"GovDAO approved"` sorts below
+> `"GovDAO pending"` alphabetically, the `-approved` view's QUERY orders **ascending** (was
+> descending) to keep approved rows above pending ones. References below have been updated
+> to the new name.
+
 ## Problem
 
 Today the `Testnet Validator` role is granted the moment a reviewer clicks **Approve**
@@ -46,7 +53,7 @@ change, no migration.
 1. Reviewer **Approve** sets status to `GovDAO pending` and does **not** mutate roles.
 2. A periodic on-chain check grants the `Testnet Validator` role (and removes
    `Testnet Validator Candidate`) once the candidate's signing address is in the active
-   validator set, then advances status to `GovDAO submitted`.
+   validator set, then advances status to `GovDAO approved`.
 3. No change to the Sheet schema.
 
 ## Non-goals
@@ -127,14 +134,14 @@ Each tick:
 
 **Activation order (preserves "Sheet write before any role mutation"):**
 
-1. Sheet: status → `GovDAO submitted`.
+1. Sheet: status → `GovDAO approved`.
 2. `GuildMemberRoleAdd(ValidatorRoleID)` then `GuildMemberRoleRemove(CandidateRoleID)`.
 3. DM the candidate a new `activated` template ("your validator is now in the active set;
    the `Testnet Validator` role has been granted").
 
 Idempotency: the poller only scans `GovDAO pending` rows, so an already-activated row
-(now `GovDAO submitted`) is never reprocessed. A role-grant failure after the Sheet write
-leaves the row at `GovDAO submitted`; it won't be retried automatically — logged for manual
+(now `GovDAO approved`) is never reprocessed. A role-grant failure after the Sheet write
+leaves the row at `GovDAO approved`; it won't be retried automatically — logged for manual
 follow-up, consistent with how the Approve handler reports partial failures today.
 
 ### 6. Configuration
@@ -149,13 +156,14 @@ unset or non-positive. Not a required field (the bot runs without it, using the 
 Candidate
   → Challenge in progress        (submit-request)
   → GovDAO pending               (reviewer Approve — NO role change)
-  → GovDAO submitted             (poller: signing address found in /validators
+  → GovDAO approved              (poller: signing address found in /validators
                                   — role granted here)
 ```
 
-`Needs retry` / `Declined` branches are unchanged. `GovDAO submitted` is reused as the
-terminal "in the active set" status (it already sorts above `GovDAO pending` in the
-`-approved` view and `IsValidated` already covers it); no new status value is introduced.
+`Needs retry` / `Declined` branches are unchanged. `GovDAO approved` is the terminal "in
+the active set" status, covered by `IsValidated`. Because `"GovDAO approved"` sorts *below*
+`"GovDAO pending"` alphabetically, the `-approved` view orders ascending so approved rows
+still appear above pending ones.
 
 ## Error handling
 
@@ -165,7 +173,7 @@ terminal "in the active set" status (it already sorts above `GovDAO pending` in 
 - Activation Sheet write failure: do **not** touch roles; log and retry next tick (the row
   is still `GovDAO pending`).
 - Role mutation failure after the Sheet write: log for manual follow-up; the row is at
-  `GovDAO submitted` and won't be retried.
+  `GovDAO approved` and won't be retried.
 - DM failure on activation: log; the role is already granted, so this is non-fatal (mirror
   the existing DM-fallback posture).
 
@@ -191,12 +199,12 @@ Following the repo's split (pure logic unit-tested; Discord/session code manual)
   rejects non-matching URLs). Config: `validator_poll_interval` parsing + default.
 - **Manual (`MANUAL_TESTING.md`):** Approve grants no role and only sets `GovDAO pending`;
   with a candidate whose signing address is in the set, the poller grants the role, removes
-  the candidate role, sets `GovDAO submitted`, and DMs the `activated` message within one
+  the candidate role, sets `GovDAO approved`, and DMs the `activated` message within one
   interval.
 
 ## Invariants preserved
 
-- **Sheet write before any Discord role mutation:** activation writes `GovDAO submitted`
+- **Sheet write before any Discord role mutation:** activation writes `GovDAO approved`
   before adding/removing roles.
 - **No Sheet schema change:** signing address is derived, never stored; columns A–Y and the
   harvest layout are untouched.
