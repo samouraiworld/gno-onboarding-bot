@@ -80,6 +80,12 @@ type fakeDiscord struct {
 	dms       []string // "content"
 	addErr    error
 	removeErr error
+	member    *discordgo.Member
+	memberErr error
+}
+
+func (f *fakeDiscord) GuildMember(guildID, userID string, _ ...discordgo.RequestOption) (*discordgo.Member, error) {
+	return f.member, f.memberErr
 }
 
 func (f *fakeDiscord) GuildMemberRoleAdd(guildID, userID, roleID string, _ ...discordgo.RequestOption) error {
@@ -138,13 +144,14 @@ func newTestPoller(t *testing.T, api sheet.API, chain chainClient, disc discordA
 		t.Fatalf("load templates: %v", err)
 	}
 	return &activationPoller{
-		cfg:    &config.Config{SheetID: "s", SheetName: "Sheet1", GuildID: "g", ValidatorRoleID: "vrole", CandidateRoleID: "crole"},
-		api:    api,
-		tpl:    tpl,
-		chain:  chain,
-		disc:   disc,
-		logf:   func(format string, v ...any) { *logs = append(*logs, fmt.Sprintf(format, v...)) },
-		warned: map[int]string{},
+		cfg:        &config.Config{SheetID: "s", SheetName: "Sheet1", GuildID: "g", ValidatorRoleID: "vrole", CandidateRoleID: "crole"},
+		api:        api,
+		tpl:        tpl,
+		chain:      chain,
+		disc:       disc,
+		logf:       func(format string, v ...any) { *logs = append(*logs, fmt.Sprintf(format, v...)) },
+		warned:     map[int]string{},
+		reconciled: map[int]bool{},
 	}
 }
 
@@ -314,6 +321,49 @@ func TestActivationTick_ThrottlesRepeatedRenderFailure(t *testing.T) {
 
 	if got := countContains(logs, "render:"); got != 1 {
 		t.Errorf("render failure should be logged once across two ticks, got %d (logs=%v)", got, logs)
+	}
+}
+
+func TestReconcileApproved_GrantsMissingRole(t *testing.T) {
+	api := &fakeSheetAPI{
+		candidates: [][]interface{}{candRow("alice", sheet.StatusGovDAOApproved, "g1op1")},
+		link:       testValidLink,
+	}
+	chain := &fakeChain{set: map[string]struct{}{}}
+	// Stranded by a crash: status is approved but the candidate holds no roles.
+	disc := &fakeDiscord{member: &discordgo.Member{Roles: []string{}}}
+	var logs []string
+	p := newTestPoller(t, api, chain, disc, &logs)
+
+	p.tick(context.Background())
+
+	if len(disc.added) != 1 || disc.added[0] != testCandidateID+"|vrole" {
+		t.Errorf("reconcile must grant the missing validator role, added=%v", disc.added)
+	}
+	if len(disc.removed) != 1 || len(disc.dms) != 1 {
+		t.Errorf("reconcile should remove candidate role and DM, removed=%v dms=%v", disc.removed, disc.dms)
+	}
+	// Second tick: already reconciled, no further grant or member fetch.
+	p.tick(context.Background())
+	if len(disc.added) != 1 {
+		t.Errorf("reconcile must run at most once per row, added=%v", disc.added)
+	}
+}
+
+func TestReconcileApproved_SkipsWhenRolePresent(t *testing.T) {
+	api := &fakeSheetAPI{
+		candidates: [][]interface{}{candRow("alice", sheet.StatusGovDAOApproved, "g1op1")},
+		link:       testValidLink,
+	}
+	chain := &fakeChain{set: map[string]struct{}{}}
+	disc := &fakeDiscord{member: &discordgo.Member{Roles: []string{"vrole"}}}
+	var logs []string
+	p := newTestPoller(t, api, chain, disc, &logs)
+
+	p.tick(context.Background())
+
+	if len(disc.added) != 0 {
+		t.Errorf("must not re-grant a role the candidate already holds, added=%v", disc.added)
 	}
 }
 
