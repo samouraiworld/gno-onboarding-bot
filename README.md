@@ -13,7 +13,7 @@ The bot registers these Discord commands (see `internal/handlers`):
 
 ## Setup
 
-1. Copy `config.example.yaml` to `config.yaml` and fill in the Discord token, guild/channel/role IDs, GovDAO contact, Google Sheet ID/name, and review SLA.
+1. Copy `config.example.yaml` to `config.yaml` and fill in the Discord token, guild/channel/role IDs, GovDAO contact, and Google Sheet ID/name.
 2. Place a Google service account key at `service-account.json` (path configurable via `google_credentials_file`).
 3. Edit `templates.yaml` to adjust candidate/reviewer-facing wording — it's loaded at startup, no rebuild needed, but the bot must be restarted to pick up changes.
 

@@ -16,36 +16,36 @@ import (
 	"onboardingbot/internal/templates"
 )
 
-const actionAskToRetry = "ask_to_retry"
+const actionDecline = "decline"
 
-func RegisterAskToRetry(s *discordgo.Session, cfg *config.Config, api sheet.API, tpl *templates.Templates) error {
+func RegisterDecline(s *discordgo.Session, cfg *config.Config, api sheet.API, tpl *templates.Templates) error {
 	cmd := &discordgo.ApplicationCommand{
-		Name: "Ask to retry",
+		Name: "Decline",
 		Type: discordgo.MessageApplicationCommand,
 	}
 	if _, err := s.ApplicationCommandCreate(s.State.User.ID, cfg.GuildID, cmd); err != nil {
-		return fmt.Errorf("create Ask to retry command: %w", err)
+		return fmt.Errorf("create Decline command: %w", err)
 	}
 
 	s.AddHandler(func(s *discordgo.Session, i *discordgo.InteractionCreate) {
 		switch i.Type {
 		case discordgo.InteractionApplicationCommand:
-			if i.ApplicationCommandData().Name != "Ask to retry" {
+			if i.ApplicationCommandData().Name != "Decline" {
 				return
 			}
-			showAskToRetryModal(s, i, cfg)
+			showDeclineModal(s, i, cfg)
 		case discordgo.InteractionModalSubmit:
 			action, row, candidateID, err := rowref.DecodeCustomID(i.ModalSubmitData().CustomID)
-			if err != nil || action != actionAskToRetry {
+			if err != nil || action != actionDecline {
 				return
 			}
-			finalizeAskToRetry(s, i, cfg, api, tpl, row, candidateID)
+			finalizeDecline(s, i, cfg, api, tpl, row, candidateID)
 		}
 	})
 	return nil
 }
 
-func showAskToRetryModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
+func showDeclineModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config) {
 	if !hasRole(i.Member, cfg.ReviewerRoleID) {
 		respondError(s, i.Interaction, "You need the reviewer role to use this command.")
 		return
@@ -61,27 +61,24 @@ func showAskToRetryModal(s *discordgo.Session, i *discordgo.InteractionCreate, c
 		respondError(s, i.Interaction, "This message is not a valid submission notification.")
 		return
 	}
-	err = showModal(s, i.Interaction, rowref.CustomID(actionAskToRetry, row, candidateID), "Ask to retry", []*discordgo.TextInput{
+	err = showModal(s, i.Interaction, rowref.CustomID(actionDecline, row, candidateID), "Decline", []*discordgo.TextInput{
 		{CustomID: "criteria", Label: "Unmet criteria, 1 per line: Criterion: Issue", Style: discordgo.TextInputParagraph, Required: true},
-		{CustomID: "actions", Label: "Actions required to retry", Style: discordgo.TextInputParagraph, Required: true},
 	})
 	if err != nil {
 		respondError(s, i.Interaction, "Could not open the form. Please try again.")
 	}
 }
 
-func finalizeAskToRetry(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config, api sheet.API, tpl *templates.Templates, row int, candidateID string) {
+func finalizeDecline(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *config.Config, api sheet.API, tpl *templates.Templates, row int, candidateID string) {
 	if err := deferEphemeral(s, i.Interaction); err != nil {
 		return
 	}
 
 	data := i.ModalSubmitData()
 	criteriaRaw := modalValue(data, "criteria")
-	actionsRaw := modalValue(data, "actions")
 
 	missing := forms.MissingRequired([]forms.Field{
 		{Label: "Unmet criteria", Value: criteriaRaw},
-		{Label: "Actions required to retry", Value: actionsRaw},
 	})
 	if len(missing) > 0 {
 		editEphemeral(s, i.Interaction, fmt.Sprintf("Missing required field(s): %s", strings.Join(missing, ", ")))
@@ -89,20 +86,26 @@ func finalizeAskToRetry(s *discordgo.Session, i *discordgo.InteractionCreate, cf
 	}
 
 	criteria := forms.SplitLines(criteriaRaw)
-	message, err := tpl.AskToRetry(criteria, actionsRaw)
+	message, err := tpl.Decline(criteria)
 	if err != nil {
-		log.Printf("ask-to-retry: render template: %v", err)
+		log.Printf("decline: render template: %v", err)
 		editEphemeral(s, i.Interaction, "Could not render the message template. Please contact a team member.")
 		return
 	}
 	if err := sheet.UpdateFields(context.Background(), api, cfg.SheetID, cfg.SheetName, row, map[sheet.Column]string{
-		sheet.ColumnStatus:          sheet.StatusNeedsRetry,
+		sheet.ColumnStatus:          sheet.StatusDeclined,
 		sheet.ColumnMissingCriteria: strings.Join(criteria, "; "),
 		sheet.ColumnDecisionDate:    today(),
 		sheet.ColumnReviewers:       i.Member.User.Username,
 	}); err != nil {
-		log.Printf("ask-to-retry: update tracker for row %d: %v", row, err)
+		log.Printf("decline: update tracker for row %d: %v", row, err)
 		editEphemeral(s, i.Interaction, "Could not update the tracker. Please try again.")
+		return
+	}
+
+	if err := s.GuildMemberRoleRemove(cfg.GuildID, candidateID, cfg.CandidateRoleID); err != nil {
+		log.Printf("decline: remove candidate role for %s: %v", candidateID, err)
+		editEphemeral(s, i.Interaction, fmt.Sprintf("Updated the tracker, but could not remove the Testnet Validator Candidate role. Please remove it manually and relay this to the candidate:\n\n%s", message))
 		return
 	}
 

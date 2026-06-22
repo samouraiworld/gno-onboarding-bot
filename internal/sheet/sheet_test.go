@@ -478,9 +478,22 @@ func TestIsValidated(t *testing.T) {
 			t.Errorf("IsValidated(%q) = false, want true", s)
 		}
 	}
-	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusNeedsRetry, "", "rejected"} {
+	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusNeedsRetry, StatusDeclined, "", "rejected"} {
 		if IsValidated(s) {
 			t.Errorf("IsValidated(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestIsReopenable(t *testing.T) {
+	for _, s := range []string{StatusNeedsRetry, StatusDeclined, " needs retry ", "DECLINED"} {
+		if !IsReopenable(s) {
+			t.Errorf("IsReopenable(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusApproved, StatusGovDAOPending, "", "rejected"} {
+		if IsReopenable(s) {
+			t.Errorf("IsReopenable(%q) = true, want false", s)
 		}
 	}
 }

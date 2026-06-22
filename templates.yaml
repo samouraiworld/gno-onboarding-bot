@@ -1,35 +1,33 @@
 welcome: |-
-  Welcome! Anyone can apply to become a Testnet validator candidate.
+  Welcome! The `Testnet Validator Candidate` role has been assigned.
 
-  I have assigned you the `Testnet Validator Candidate` role. Please go to `#testnet-onboarding`, read the pinned instructions, and complete the onboarding challenge. Once you submit the requested evidence, a member of the Gno team will review it and send you the next steps.
+  You now have access to `#testnet-onboarding`. Read the pinned instructions and complete the challenge. Once the node and application are ready, run `/submit-request` in `#testnet-onboarding` and provide only the operator address.
 
 acknowledge: |-
-  Thanks, we received your validator onboarding submission. A member of the Gno team will review it against the published criteria and reply by `{{.Timeframe}}`. Please do not send any private key or seed phrase during the review.
+  Thanks, we received the operator address submitted with `/submit-request`. The Gno team will review it against the published criteria and reply.
 
 request_missing_info: |-
-  Thanks for the submission. Before we can complete the review, please provide or correct the following:
+  Thanks. Before we can finish the review, please correct:
 
   {{range $i, $item := .Items}}{{if $i}}
   {{end}}- `{{$item}}`{{end}}
 
-  Please reply with the updated public evidence. Do not share private keys, seed phrases, or validator signing keys.
+  After fixing it, run `/submit-request` again and provide only the operator address.
 
 approve: |-
-  Your onboarding challenge has been approved. We have assigned you the `Testnet Validator` role.
+  Congratulations, you passed the onboarding challenge. We assigned you the `Testnet Validator` role.
 
-  Next steps:
+  Next: wait for GovDAO approval and confirmation before treating your validator as active. New external validators start with voting power `1` and may earn more later through a separate, documented process.
 
-  1. Wait for GovDAO approval and confirmation before considering your validator active.
-
-  New external validators start with voting power `1` and may receive more voting power later under a separate, documented process.
-
-ask_to_retry: |-
-  Thanks for completing the onboarding challenge. We cannot approve it yet because the following published criteria are not complete:
+decline: |-
+  Thanks for completing the challenge. We cannot approve this application because the following published criteria are not met:
 
   {{range $i, $c := .Criteria}}{{if $i}}
   {{end}}- `{{$c}}`{{end}}
 
-  To retry, please `{{.Actions}}` and submit the updated evidence here. You are welcome to ask technical questions if any instruction is unclear.
+  The `Testnet Validator Candidate` role will now be removed.
+
+  To apply again, restart the process from the beginning: run `/candidate-testnet` in `┋💬ㆍgeneral-chat`, complete every pinned onboarding step, then run `/submit-request` with only the operator address. The new application will be reviewed independently.
 
 escalate_to_call: |-
-  Thanks for the submission. Most of the challenge is complete, but we need to clarify `{{.Topic}}` before making a decision. Could you join a short technical call at one of these times: `{{.Options}}`? The call will focus on `{{.Scope}}`.
+  Thanks for the submission. Before we decide, we need to clarify `{{.Topic}}`. Can you join a short technical call at one of these times: `{{.Options}}`? It will focus on `{{.Scope}}`.
