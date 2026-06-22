@@ -24,9 +24,14 @@ type chainClient interface {
 // StartActivationPoller launches a goroutine that, every `every`, promotes
 // "GovDAO pending" candidates whose validator has joined the active set:
 // it writes "GovDAO submitted", grants the Testnet Validator role (removing the
-// Candidate role), and DMs the candidate. Runs until ctx is cancelled.
-func StartActivationPoller(ctx context.Context, s *discordgo.Session, cfg *config.Config, api sheet.API, tpl *templates.Templates, chain chainClient, every time.Duration) {
+// Candidate role), and DMs the candidate. Runs until ctx is cancelled. The
+// returned channel is closed once the goroutine has observed ctx.Done() and
+// exited, so callers can wait for any in-flight tick to finish before
+// tearing down dependencies (e.g. closing the Discord session).
+func StartActivationPoller(ctx context.Context, s *discordgo.Session, cfg *config.Config, api sheet.API, tpl *templates.Templates, chain chainClient, every time.Duration) <-chan struct{} {
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(every)
 		defer ticker.Stop()
 		for {
@@ -38,6 +43,7 @@ func StartActivationPoller(ctx context.Context, s *discordgo.Session, cfg *confi
 			}
 		}
 	}()
+	return done
 }
 
 func runActivationTick(ctx context.Context, s *discordgo.Session, cfg *config.Config, api sheet.API, tpl *templates.Templates, chain chainClient) {
