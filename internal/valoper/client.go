@@ -116,8 +116,12 @@ type validatorsResponse struct {
 }
 
 // ValidatorSet returns the set of active validator signing addresses reported by
-// the node's `validators` RPC method, for O(1) membership checks. The gno node
-// returns the full set in one call (no pagination).
+// the node's `validators` RPC method, for O(1) membership checks. This issues a
+// single call with no page/per_page params: the gno RPC (verified against
+// test13) returns the whole set in one `validators` response with no pagination
+// metadata, unlike vanilla Tendermint which caps a page at per_page (max 100).
+// If a future node enforces Tendermint-style paging, only the first page would
+// be read — revisit this then.
 func (c *Client) ValidatorSet(ctx context.Context) (map[string]struct{}, error) {
 	reqBody, err := json.Marshal(rpcValidatorsRequest{
 		JSONRPC: "2.0", ID: 1, Method: "validators", Params: struct{}{},
