@@ -101,7 +101,7 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 	// operatorAddr from the render is ignored: addr is the address we queried
 	// qrender with, so it is the canonical operator address and cannot be
 	// spoofed by free text in the description.
-	moniker, _, description, err := valoper.ParseRender(raw)
+	moniker, _, _, description, err := valoper.ParseRender(raw)
 	if err != nil {
 		if errors.Is(err, valoper.ErrNotRegistered) {
 			editEphemeral(s, i.Interaction, "No valoper profile found for that address. Register on r/gnops/valopers first, then resubmit.")

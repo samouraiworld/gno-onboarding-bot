@@ -57,7 +57,7 @@ Second paragraph with a [link](https://x).
 `
 
 func TestParseRender(t *testing.T) {
-	moniker, gotAddr, desc, err := ParseRender(fullRender)
+	moniker, gotAddr, signing, desc, err := ParseRender(fullRender)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -67,6 +67,9 @@ func TestParseRender(t *testing.T) {
 	if gotAddr != addr {
 		t.Errorf("addr = %q", gotAddr)
 	}
+	if signing != "g1k7asng8uzf74xs0tsrfwytldl76hs4l3asglym" {
+		t.Errorf("signing = %q", signing)
+	}
 	want := "Multi-line intro.\n\nSecond paragraph with a [link](https://x)."
 	if desc != want {
 		t.Errorf("desc = %q, want %q", desc, want)
@@ -75,25 +78,25 @@ func TestParseRender(t *testing.T) {
 
 func TestParseRender_EmptyDescription(t *testing.T) {
 	raw := "Valoper's details:\n## Solo\n- Operator Address: g1abc\n- Server Type: cloud\n"
-	moniker, gotAddr, desc, err := ParseRender(raw)
+	moniker, gotAddr, signing, desc, err := ParseRender(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if moniker != "Solo" || gotAddr != "g1abc" || desc != "" {
-		t.Errorf("got moniker=%q addr=%q desc=%q", moniker, gotAddr, desc)
+	if moniker != "Solo" || gotAddr != "g1abc" || signing != "" || desc != "" {
+		t.Errorf("got moniker=%q addr=%q signing=%q desc=%q", moniker, gotAddr, signing, desc)
 	}
 }
 
 func TestParseRender_Unknown(t *testing.T) {
 	for _, raw := range []string{"unknown address " + addr, "invalid address foo"} {
-		if _, _, _, err := ParseRender(raw); !errors.Is(err, ErrNotRegistered) {
+		if _, _, _, _, err := ParseRender(raw); !errors.Is(err, ErrNotRegistered) {
 			t.Errorf("ParseRender(%q) err = %v, want ErrNotRegistered", raw, err)
 		}
 	}
 }
 
 func TestParseRender_MissingMarkers(t *testing.T) {
-	if _, _, _, err := ParseRender("garbage with no markers"); !errors.Is(err, ErrUnparseable) {
+	if _, _, _, _, err := ParseRender("garbage with no markers"); !errors.Is(err, ErrUnparseable) {
 		t.Errorf("err = %v, want ErrUnparseable", err)
 	}
 }

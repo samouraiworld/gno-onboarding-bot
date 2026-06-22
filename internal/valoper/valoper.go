@@ -43,15 +43,16 @@ func AddressFromInput(s string) (string, error) {
 	return s, nil
 }
 
-// ParseRender extracts the moniker, operator address, and description from a
+// ParseRender extracts the moniker, operator address, signing address, and description from a
 // single-valoper realm render.
-func ParseRender(raw string) (moniker, operatorAddr, description string, err error) {
+func ParseRender(raw string) (moniker, operatorAddr, signingAddr, description string, err error) {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	if t := strings.TrimSpace(raw); strings.HasPrefix(t, "unknown address") || strings.HasPrefix(t, "invalid address") {
-		return "", "", "", ErrNotRegistered
+		return "", "", "", "", ErrNotRegistered
 	}
 
 	const opMarker = "- Operator Address:"
+	const signMarker = "- Signing Address:"
 	lines := strings.Split(raw, "\n")
 	monikerIdx, opIdx := -1, -1
 	for i, ln := range lines {
@@ -61,17 +62,20 @@ func ParseRender(raw string) (moniker, operatorAddr, description string, err err
 			moniker = strings.TrimSpace(strings.TrimPrefix(t, "## "))
 			continue
 		}
-		if strings.HasPrefix(t, opMarker) {
+		if opIdx == -1 && strings.HasPrefix(t, opMarker) {
 			opIdx = i
 			operatorAddr = strings.TrimSpace(strings.TrimPrefix(t, opMarker))
-			break
+			continue
+		}
+		if signingAddr == "" && strings.HasPrefix(t, signMarker) {
+			signingAddr = strings.TrimSpace(strings.TrimPrefix(t, signMarker))
 		}
 	}
 	if monikerIdx == -1 || opIdx == -1 || moniker == "" || operatorAddr == "" {
-		return "", "", "", ErrUnparseable
+		return "", "", "", "", ErrUnparseable
 	}
 	description = strings.TrimSpace(strings.Join(lines[monikerIdx+1:opIdx], "\n"))
-	return moniker, operatorAddr, description, nil
+	return moniker, operatorAddr, signingAddr, description, nil
 }
 
 // ProfileURL builds the gnoweb profile URL for a valoper address.
