@@ -10,6 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// minValidatorPollInterval is the floor for validator_poll_interval. It fails
+// closed against a misconfigured tiny interval hammering the RPC node and the
+// Sheets API every tick.
+const minValidatorPollInterval = 5 * time.Second
+
 type Config struct {
 	DiscordToken             string `yaml:"discord_token"`
 	GuildID                  string `yaml:"guild_id"`
@@ -64,8 +69,8 @@ func Load(path string) (*Config, error) {
 		if derr != nil {
 			return nil, fmt.Errorf("config validator_poll_interval %q is not a valid Go duration: %w", cfg.ValidatorPollInterval, derr)
 		}
-		if d <= 0 {
-			return nil, fmt.Errorf("config validator_poll_interval must be positive, got %q", cfg.ValidatorPollInterval)
+		if d < minValidatorPollInterval {
+			return nil, fmt.Errorf("config validator_poll_interval must be at least %s, got %q", minValidatorPollInterval, cfg.ValidatorPollInterval)
 		}
 		cfg.ValidatorPollEvery = d
 	}

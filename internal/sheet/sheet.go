@@ -433,10 +433,31 @@ func DiscordIDFromUserURL(url string) (string, bool) {
 		return "", false
 	}
 	id := strings.TrimPrefix(url, prefix)
-	if id == "" || strings.ContainsAny(id, "/?#") {
+	// A Discord snowflake is 17-20 digits. Validating it (rather than accepting
+	// any trailing text) fails closed: a hand-edited cell like ".../users/@everyone"
+	// is rejected instead of being passed to GuildMemberRoleAdd.
+	if !discordSnowflakeRe.MatchString(id) {
 		return "", false
 	}
 	return id, true
+}
+
+var discordSnowflakeRe = regexp.MustCompile(`^\d{17,20}$`)
+
+// ReadStatus reads the Status (column C) cell of a single 1-based row. The
+// activation poller calls it to re-check a row's status immediately before a
+// state transition, so a reviewer decision (e.g. Decline) that landed since the
+// tick's bulk read isn't clobbered. Returns "" when the cell is empty.
+func ReadStatus(ctx context.Context, api API, spreadsheetID, sheetName string, row int) (string, error) {
+	rangeA1 := fmt.Sprintf("%s!%s%d", sheetName, columnLetter(ColumnStatus), row)
+	data, err := api.Get(ctx, spreadsheetID, rangeA1)
+	if err != nil {
+		return "", fmt.Errorf("read status %s: %w", rangeA1, err)
+	}
+	if len(data) == 0 || len(data[0]) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(fmt.Sprint(data[0][0])), nil
 }
 
 func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string, row int, fields map[Column]string) error {

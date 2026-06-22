@@ -119,3 +119,20 @@ func TestLoad_InvalidValidatorPoll(t *testing.T) {
 		t.Fatal("expected error for invalid validator_poll_interval")
 	}
 }
+
+func TestLoad_ValidatorPollBelowFloor(t *testing.T) {
+	for _, v := range []string{"1ns", "1s", "4s"} {
+		path := writeTempConfig(t, validConfig+"\nvalidator_poll_interval: \""+v+"\"\n")
+		if _, err := Load(path); err == nil {
+			t.Errorf("validator_poll_interval %q: expected error (below 5s floor), got nil", v)
+		}
+	}
+	// 5s is exactly the floor and must be accepted.
+	cfg, err := Load(writeTempConfig(t, validConfig+"\nvalidator_poll_interval: \"5s\"\n"))
+	if err != nil {
+		t.Fatalf("validator_poll_interval \"5s\": unexpected error: %v", err)
+	}
+	if cfg.ValidatorPollEvery != 5*time.Second {
+		t.Errorf("ValidatorPollEvery = %v, want 5s", cfg.ValidatorPollEvery)
+	}
+}

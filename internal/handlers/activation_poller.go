@@ -92,6 +92,17 @@ func activateCandidate(ctx context.Context, s *discordgo.Session, cfg *config.Co
 		log.Printf("activation: row %d has no resolvable Discord ID; grant the role manually", r.Row)
 		return
 	}
+	// Re-check the row's status immediately before mutating. This tick's row list
+	// was read in bulk before the per-row chain calls; a reviewer Decline that
+	// landed since then must not be clobbered back to GovDAO approved.
+	switch status, err := sheet.ReadStatus(ctx, api, cfg.SheetID, cfg.SheetName, r.Row); {
+	case err != nil:
+		log.Printf("activation: re-read status row %d: %v", r.Row, err)
+		return
+	case strings.TrimSpace(status) != sheet.StatusGovDAOPending:
+		log.Printf("activation: row %d no longer GovDAO pending (now %q); skipping", r.Row, status)
+		return
+	}
 	// Sheet write before any role mutation (invariant).
 	if err := sheet.UpdateFields(ctx, api, cfg.SheetID, cfg.SheetName, r.Row, map[sheet.Column]string{
 		sheet.ColumnStatus: sheet.StatusGovDAOApproved,
@@ -100,7 +111,15 @@ func activateCandidate(ctx context.Context, s *discordgo.Session, cfg *config.Co
 		return
 	}
 	if err := s.GuildMemberRoleAdd(cfg.GuildID, candidateID, cfg.ValidatorRoleID); err != nil {
-		log.Printf("activation: add validator role for %s (row %d): %v — grant manually", candidateID, r.Row, err)
+		// Roll the status back so the next tick retries instead of stranding the
+		// candidate at GovDAO approved with no role (the pending-only filter would
+		// otherwise never reselect it).
+		log.Printf("activation: add validator role for %s (row %d): %v — rolling back to GovDAO pending", candidateID, r.Row, err)
+		if rbErr := sheet.UpdateFields(ctx, api, cfg.SheetID, cfg.SheetName, r.Row, map[sheet.Column]string{
+			sheet.ColumnStatus: sheet.StatusGovDAOPending,
+		}); rbErr != nil {
+			log.Printf("activation: rollback status row %d failed: %v — grant the role manually", r.Row, rbErr)
+		}
 		return
 	}
 	if err := s.GuildMemberRoleRemove(cfg.GuildID, candidateID, cfg.CandidateRoleID); err != nil {

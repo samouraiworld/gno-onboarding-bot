@@ -626,16 +626,44 @@ func hasUpdateRow(api *fakeAPI, rangeA1 string) bool {
 	return false
 }
 
+func TestReadStatus(t *testing.T) {
+	api := &fakeAPI{getResult: [][]interface{}{{"GovDAO pending"}}}
+	got, err := ReadStatus(context.Background(), api, "sheet-id", "Sheet1", 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "GovDAO pending" {
+		t.Errorf("ReadStatus = %q, want %q", got, "GovDAO pending")
+	}
+
+	empty := &fakeAPI{getResult: nil}
+	if got, err := ReadStatus(context.Background(), empty, "sheet-id", "Sheet1", 7); err != nil || got != "" {
+		t.Errorf("empty cell: got (%q, %v), want (\"\", nil)", got, err)
+	}
+
+	failing := &fakeAPI{getErr: context.DeadlineExceeded}
+	if _, err := ReadStatus(context.Background(), failing, "sheet-id", "Sheet1", 7); err == nil {
+		t.Fatal("expected error when Get fails")
+	}
+}
+
 func TestDiscordIDFromUserURL(t *testing.T) {
 	tests := []struct {
 		in   string
 		want string
 		ok   bool
 	}{
-		{"https://discord.com/users/123456789", "123456789", true},
+		{"https://discord.com/users/123456789012345678", "123456789012345678", true},     // 18-digit snowflake
+		{"https://discord.com/users/12345678901234567", "12345678901234567", true},       // 17 digits (min)
+		{"https://discord.com/users/12345678901234567890", "12345678901234567890", true}, // 20 digits (max)
+		{"https://discord.com/users/1234567890123456", "", false},                        // 16 digits — too short
+		{"https://discord.com/users/123456789012345678901", "", false},                   // 21 digits — too long
+		{"https://discord.com/users/123456789", "", false},                               // 9 digits — too short
+		{"https://discord.com/users/@everyone", "", false},                               // non-numeric
+		{"https://discord.com/users/abc", "", false},                                     // non-numeric
 		{"https://discord.com/users/", "", false},
-		{"https://example.com/users/123", "", false},
-		{"https://discord.com/users/123/extra", "", false},
+		{"https://example.com/users/123456789012345678", "", false},      // wrong host
+		{"https://discord.com/users/123456789012345678/x", "", false},    // trailing path
 		{"", "", false},
 	}
 	for _, tt := range tests {
