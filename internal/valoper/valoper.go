@@ -62,17 +62,28 @@ func ParseRender(raw string) (moniker, operatorAddr, signingAddr, description st
 			moniker = strings.TrimSpace(strings.TrimPrefix(t, "## "))
 			continue
 		}
-		if opIdx == -1 && strings.HasPrefix(t, opMarker) {
+		// Operator address: take the LAST occurrence. The realm renders the
+		// operator-controlled Description before the canonical fields, so any
+		// "- Operator Address:" an attacker injects there appears earlier than
+		// the real one — the last match is the canonical operator line.
+		if strings.HasPrefix(t, opMarker) {
 			opIdx = i
 			operatorAddr = strings.TrimSpace(strings.TrimPrefix(t, opMarker))
-			continue
-		}
-		if signingAddr == "" && strings.HasPrefix(t, signMarker) {
-			signingAddr = strings.TrimSpace(strings.TrimPrefix(t, signMarker))
 		}
 	}
 	if monikerIdx == -1 || opIdx == -1 || moniker == "" || operatorAddr == "" {
 		return "", "", "", "", ErrUnparseable
+	}
+	// Signing address: the first "- Signing Address:" AFTER the canonical operator
+	// line. Everything after that line is realm-generated (not user-controllable),
+	// so a "- Signing Address:" injected into the Description (which renders before
+	// the operator line) cannot spoof the address used to gate role grants.
+	for _, ln := range lines[opIdx+1:] {
+		t := strings.TrimSpace(ln)
+		if strings.HasPrefix(t, signMarker) {
+			signingAddr = strings.TrimSpace(strings.TrimPrefix(t, signMarker))
+			break
+		}
 	}
 	description = strings.TrimSpace(strings.Join(lines[monikerIdx+1:opIdx], "\n"))
 	return moniker, operatorAddr, signingAddr, description, nil

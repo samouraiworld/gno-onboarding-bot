@@ -95,6 +95,28 @@ func TestParseRender_Unknown(t *testing.T) {
 	}
 }
 
+// TestParseRender_SigningAddressInjection guards against signing-address
+// spoofing: the Description is operator-controlled free text rendered BEFORE the
+// canonical block, so a "- Signing Address:" line injected there must not win
+// over the real one in the canonical block.
+func TestParseRender_SigningAddressInjection(t *testing.T) {
+	const victim = "g1victimactivevalidatorxxxxxxxxxxxxxxxx"
+	const real = "g1attackerrealsigningxxxxxxxxxxxxxxxxxxxx"
+	render := "Valoper's details:\n## Attacker\n" +
+		"welcome to my node\n" +
+		"- Signing Address: " + victim + "\n\n" +
+		"- Operator Address: g1attackeroperatorxxxxxxxxxxxxxxxxxxxxxxx\n" +
+		"- Signing Address: " + real + "\n" +
+		"- Signing PubKey: gpub1xyz\n- Server Type: cloud\n"
+	_, _, signing, _, err := ParseRender(render)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if signing != real {
+		t.Errorf("signing = %q, want canonical %q (description injection must not win)", signing, real)
+	}
+}
+
 func TestParseRender_MissingMarkers(t *testing.T) {
 	if _, _, _, _, err := ParseRender("garbage with no markers"); !errors.Is(err, ErrUnparseable) {
 		t.Errorf("err = %v, want ErrUnparseable", err)
