@@ -24,9 +24,9 @@ The bot does not do this itself (Discord rejects bot tokens on the permissions e
 
 ## Checklist
 
-- [ ] `/candidate-testnet` in the general-chat channel: grants `Testnet Validator Candidate`, creates a new Sheet row (`Status` = `Candidate`), and sends a DM with the exact "Reply to someone asking to become a validator" wording from `Shared.md`.
+- [ ] `/candidate-testnet` in the general-chat channel: grants `Testnet Validator Candidate` and sends a DM with the exact "Reply to someone asking to become a validator" wording from `Shared.md`. No Sheet row is created at intake; the candidate's row is created later by `/submit-request`.
 - [ ] `/candidate-testnet` is not visible/usable in any other channel.
-- [ ] `/candidate-testnet` run again by the same member: ephemeral notice, no second role grant or Sheet row.
+- [ ] `/candidate-testnet` run again by the same member: ephemeral notice, no second role grant.
 - [ ] `/submit-request` in the onboarding channel (as the candidate): opens a single-field modal asking for the operator address (`g1...`). Pasting a **registered** valoper's address creates a new Sheet row (`Status` = `Challenge in progress`; `Moniker` (J), `Operator address` (K) parsed from the realm; `Valoper link` (H) = the gnoweb profile URL; `Introduction` (L) = the profile description), posts a notification embed in `#validator-review` (Moniker, Operator address, clickable Valoper link, truncated Introduction) pinging `Onboarding Reviewer`, and DMs the candidate the exact "Acknowledge a submission" wording.
 - [ ] `/submit-request` with a non-address / junk string: ephemeral "not a valid operator address"; no Sheet row.
 - [ ] `/submit-request` with a well-formed but **unregistered** `g1` address: ephemeral "register on r/gnops/valopers first"; no Sheet row.
@@ -42,7 +42,7 @@ The bot does not do this itself (Discord rejects bot tokens on the permissions e
 - [ ] Closed DMs: temporarily block DMs from server members on a test account, then run `/candidate-testnet` and `/submit-request` as that account — confirm the ephemeral fallback shows the full message text. Then have a reviewer run `Approve` against that candidate — confirm the reviewer sees the "could not DM the candidate" fallback ephemeral message instead.
 - [ ] Deleted/invalid notification: delete a notification message in `#validator-review`, then try right-clicking a different, unrelated message in that channel with one of the four reviewer commands — confirm an ephemeral error rather than a crash or an orphaned DM.
 - [ ] Empty required field: submit any modal leaving a required field blank — confirm an ephemeral error naming the missing field, and that no DM or Sheet write happens.
-- [ ] Sheets failure: temporarily revoke the service account's access to the Sheet, then run `/candidate-testnet` — confirm an ephemeral error and that no role is granted (Sheet write failure must block the role change, per the design's error-handling rule).
+- [ ] Sheets failure: temporarily revoke the service account's access to the Sheet, then run `Approve` against a pending candidate — confirm an ephemeral "could not update the tracker" error and that neither role changes (no `Testnet Validator` granted, `Testnet Validator Candidate` not removed). Sheet write failure must block the role change, per the design's error-handling rule. (`/candidate-testnet` no longer writes the Sheet, so it cannot exercise this rule.)
 
 ## Harvest checklist
 
