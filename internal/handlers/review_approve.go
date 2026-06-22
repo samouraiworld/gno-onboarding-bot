@@ -65,7 +65,7 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	message, err := tpl.Approve()
 	if err != nil {
 		log.Printf("approve: render template: %v", err)
-		editEphemeral(s, i.Interaction, "Role updated, but the approval message template failed to render. Please contact a team member.")
+		editEphemeral(s, i.Interaction, "Status updated, but the approval message template failed to render. Please contact a team member.")
 		return
 	}
 	dmFailed := sendDM(s, candidateID, message) != nil
