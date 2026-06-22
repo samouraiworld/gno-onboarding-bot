@@ -16,6 +16,7 @@ type rawTemplates struct {
 	Approve            string `yaml:"approve"`
 	Decline            string `yaml:"decline"`
 	EscalateToCall     string `yaml:"escalate_to_call"`
+	Activated          string `yaml:"activated"`
 }
 
 type Templates struct {
@@ -25,6 +26,7 @@ type Templates struct {
 	approve            *template.Template
 	decline            *template.Template
 	escalateToCall     *template.Template
+	activated          *template.Template
 }
 
 func Load(path string) (*Templates, error) {
@@ -49,6 +51,7 @@ func Load(path string) (*Templates, error) {
 		{"approve", raw.Approve, &t.approve},
 		{"decline", raw.Decline, &t.decline},
 		{"escalate_to_call", raw.EscalateToCall, &t.escalateToCall},
+		{"activated", raw.Activated, &t.activated},
 	}
 	for _, e := range entries {
 		parsed, err := template.New(e.name).Parse(e.text)
@@ -90,4 +93,8 @@ func (t *Templates) Decline(criteria []string) (string, error) {
 
 func (t *Templates) EscalateToCall(topic, options, scope string) (string, error) {
 	return render(t.escalateToCall, struct{ Topic, Options, Scope string }{topic, options, scope})
+}
+
+func (t *Templates) Activated() (string, error) {
+	return render(t.activated, nil)
 }
