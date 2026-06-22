@@ -167,7 +167,7 @@ func TestBuild_ValoperStatePropagates(t *testing.T) {
 func TestCriteriaBools(t *testing.T) {
 	// Partial map: only setup (index 0) and valoper (index 3) are found; tx is
 	// explicitly not_found; the rest are absent. Pins both the Criteria order and
-	// the "missing/non-found => false" rule that drives checkboxes P-V.
+	// the "missing/non-found => false" rule that drives checkboxes R-X.
 	c := DigestCandidate{Criteria: map[string]string{
 		"setup":   StateFound,
 		"valoper": StateFound,
@@ -208,6 +208,28 @@ func TestCells(t *testing.T) {
 	}
 	if got := (DigestCandidate{Readiness: "Neutral"}).ReadinessCell(); got != "Neutral" {
 		t.Errorf("ReadinessCell no-score = %q", got)
+	}
+}
+
+func TestEvidenceLinkUnmarshal(t *testing.T) {
+	in := `{"candidates":[{"row":2,"readiness":"High","evidence_links":[
+		{"title":"Submission","url":"https://a"},
+		"https://b"
+	]}]}`
+	var got DigestFile
+	if err := json.Unmarshal([]byte(in), &got); err != nil {
+		t.Fatal(err)
+	}
+	links := got.Candidates[0].EvidenceLinks
+	if len(links) != 2 {
+		t.Fatalf("got %d links, want 2", len(links))
+	}
+	if links[0] != (EvidenceLink{Title: "Submission", URL: "https://a"}) {
+		t.Errorf("object form = %#v", links[0])
+	}
+	// Legacy bare-string form loads with no title; Label falls back to the URL.
+	if links[1] != (EvidenceLink{URL: "https://b"}) || links[1].Label() != "https://b" {
+		t.Errorf("string form = %#v, label %q", links[1], links[1].Label())
 	}
 }
 

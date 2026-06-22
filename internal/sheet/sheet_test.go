@@ -55,6 +55,11 @@ type fakeAPI struct {
 	linkedTextURL    string
 	linkedTextErr    error
 
+	linkedLinesRow   int
+	linkedLinesCol   int
+	linkedLinesLines []LinkedLine
+	linkedLinesErr   error
+
 	statusColorsCalled  bool
 	statusColorsMapping map[string]string
 	statusColorsErr     error
@@ -141,6 +146,13 @@ func (f *fakeAPI) SetLinkedText(ctx context.Context, spreadsheetID, sheetName st
 	return f.linkedTextErr
 }
 
+func (f *fakeAPI) SetLinkedLines(ctx context.Context, spreadsheetID, sheetName string, row, col int, lines []LinkedLine) error {
+	f.linkedLinesRow = row
+	f.linkedLinesCol = col
+	f.linkedLinesLines = lines
+	return f.linkedLinesErr
+}
+
 func (f *fakeAPI) SetStatusColors(ctx context.Context, spreadsheetID, sheetName string, statusCol Column, mapping map[string]string) error {
 	f.statusColorsCalled = true
 	f.statusColorsMapping = mapping
@@ -186,7 +198,7 @@ func TestParseRowNumber(t *testing.T) {
 
 func TestAppendCandidateRow_EmptyTab(t *testing.T) {
 	api := &fakeAPI{getResult: nil}
-	row := CandidateRow{Candidate: "alice", Discord: "@alice", Status: StatusCandidate}
+	row := CandidateRow{Candidate: "alice", Discord: "@alice", Status: StatusCandidate, Architecture: "3 sentries", BackupPlan: "hot standby"}
 	got, err := AppendCandidateRow(context.Background(), api, "sheet-id", "Sheet1", row)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -194,14 +206,20 @@ func TestAppendCandidateRow_EmptyTab(t *testing.T) {
 	if got != 2 {
 		t.Errorf("got row %d, want 2", got)
 	}
-	if api.updateRowRange != "Sheet1!A2:M2" {
-		t.Errorf("got range %q, want %q", api.updateRowRange, "Sheet1!A2:M2")
+	if api.updateRowRange != "Sheet1!A2:O2" {
+		t.Errorf("got range %q, want %q", api.updateRowRange, "Sheet1!A2:O2")
 	}
-	if len(api.updateRowValues) != 13 {
-		t.Fatalf("got %d values, want 13", len(api.updateRowValues))
+	if len(api.updateRowValues) != len(Headers) {
+		t.Fatalf("got %d values, want %d", len(api.updateRowValues), len(Headers))
 	}
 	if api.updateRowValues[0] != "alice" {
 		t.Errorf("got candidate %v, want alice", api.updateRowValues[0])
+	}
+	if api.updateRowValues[ColumnArchitecture] != "3 sentries" {
+		t.Errorf("architecture at col M = %v, want '3 sentries'", api.updateRowValues[ColumnArchitecture])
+	}
+	if api.updateRowValues[ColumnBackupPlan] != "hot standby" {
+		t.Errorf("backup plan at col N = %v, want 'hot standby'", api.updateRowValues[ColumnBackupPlan])
 	}
 }
 
@@ -218,8 +236,8 @@ func TestAppendCandidateRow_AppendsAfterExisting(t *testing.T) {
 	if got != 4 {
 		t.Errorf("got row %d, want 4", got)
 	}
-	if api.updateRowRange != "Sheet1!A4:M4" {
-		t.Errorf("got range %q, want %q", api.updateRowRange, "Sheet1!A4:M4")
+	if api.updateRowRange != "Sheet1!A4:O4" {
+		t.Errorf("got range %q, want %q", api.updateRowRange, "Sheet1!A4:O4")
 	}
 }
 
@@ -292,8 +310,8 @@ func TestClearRow(t *testing.T) {
 	if err := ClearRow(context.Background(), api, "sheet-id", "Test", 7); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if api.updateRowRange != "Test!A7:M7" {
-		t.Errorf("got range %q, want %q", api.updateRowRange, "Test!A7:M7")
+	if api.updateRowRange != "Test!A7:O7" {
+		t.Errorf("got range %q, want %q", api.updateRowRange, "Test!A7:O7")
 	}
 	if len(api.updateRowValues) != len(Headers) {
 		t.Fatalf("got %d values, want %d", len(api.updateRowValues), len(Headers))
@@ -313,8 +331,8 @@ func TestEnsure_WritesHeadersWhenEmpty(t *testing.T) {
 	if !api.ensureTabCalled {
 		t.Error("EnsureTab not called")
 	}
-	if api.updateRowRange != "Test!A1:M1" {
-		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test!A1:M1")
+	if api.updateRowRange != "Test!A1:O1" {
+		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test!A1:O1")
 	}
 	if len(api.updateRowValues) != len(Headers) {
 		t.Fatalf("got %d header values, want %d", len(api.updateRowValues), len(Headers))
@@ -332,14 +350,14 @@ func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
 	if !api.ensureTabCalled {
 		t.Error("EnsureTab not called")
 	}
-	if api.updateRowRange != "Test-approved!A1:Y1" {
-		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test-approved!A1:Y1")
+	if api.updateRowRange != "Test-approved!A1:AA1" {
+		t.Errorf("got header range %q, want %q", api.updateRowRange, "Test-approved!A1:AA1")
 	}
-	if len(api.updateRowValues) != 25 {
-		t.Fatalf("approved headers must span A-Y (25 cols), got %d", len(api.updateRowValues))
+	if len(api.updateRowValues) != 27 {
+		t.Fatalf("approved headers must span A-AA (27 cols), got %d", len(api.updateRowValues))
 	}
-	if api.updateRowValues[24] != "Evidence links" {
-		t.Errorf("last approved header = %v, want \"Evidence links\"", api.updateRowValues[24])
+	if api.updateRowValues[26] != "Evidence links" {
+		t.Errorf("last approved header = %v, want \"Evidence links\"", api.updateRowValues[26])
 	}
 	if api.setFormulaRange != "Test-approved!A2" {
 		t.Errorf("got formula range %q, want %q", api.setFormulaRange, "Test-approved!A2")
@@ -441,24 +459,26 @@ func TestFormulaArgSep(t *testing.T) {
 }
 
 func TestEnsureApprovedView_RewritesNarrowHeaderToFullWidth(t *testing.T) {
-	// An older approved tab with only the A-M intake header must be brought up to
-	// the full A-Y schema, not skipped.
+	// An older approved tab with only the A-O intake header must be brought up to
+	// the full A-AA schema, not skipped.
 	api := &fakeAPI{getResult: [][]interface{}{{"Candidate"}}}
 	if err := EnsureApprovedView(context.Background(), api, "sheet-id", "Test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if api.updateRowRange != "Test-approved!A1:Y1" {
-		t.Errorf("headers must be rewritten to A1:Y1, got %q", api.updateRowRange)
+	if api.updateRowRange != "Test-approved!A1:AA1" {
+		t.Errorf("headers must be rewritten to A1:AA1, got %q", api.updateRowRange)
 	}
 	if api.setFormulaRange != "Test-approved!A2" {
 		t.Errorf("SetFormula not called or wrong range: %q", api.setFormulaRange)
 	}
-	if !strings.Contains(api.setFormulaFormula, "QUERY('Test'!A2:Y") {
-		t.Errorf("formula must mirror the full A2:Y range: %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "QUERY('Test'!A2:AA") {
+		t.Errorf("formula must mirror the full A2:AA range: %s", api.setFormulaFormula)
 	}
 }
 
 func TestEnsure_SkipsHeadersWhenPresent(t *testing.T) {
+	// Ensure must not clobber a non-empty row 1; it writes the header only on an
+	// empty tab.
 	api := &fakeAPI{getResult: [][]interface{}{{"Candidate"}}}
 	if err := Ensure(context.Background(), api, "sheet-id", "Test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -534,26 +554,37 @@ func TestWriteHarvestColumns(t *testing.T) {
 	for _, u := range api.updates {
 		got[u.rangeA1] = u.value
 	}
-	if got["Candidates!W2"] != "Secret leak: private_key" || got["Candidates!X2"] != "12 msgs" {
-		t.Errorf("Red flags (W2)/Engagement (X2) = %v", got)
+	if got["Candidates!Y2"] != "Secret leak: private_key" || got["Candidates!Z2"] != "12 msgs" {
+		t.Errorf("Red flags (Y2)/Engagement (Z2) = %v", got)
 	}
 }
 
 func TestWriteDigestColumns(t *testing.T) {
 	api := &fakeAPI{}
 	criteria := []bool{true, true, false, false, true, false, true} // setup,sync,tx,valoper,ops,comms,safety
-	if err := WriteDigestColumns(context.Background(), api, "id", "Candidates", 2, "High (6/7)", "ok", "https://l", criteria); err != nil {
+	evidence := []LinkedLine{{Text: "Submission", URL: "https://l"}}
+	if err := WriteDigestColumns(context.Background(), api, "id", "Candidates", 2, "High (6/7)", "ok", evidence, criteria); err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
 	for _, u := range api.updates {
 		got[u.rangeA1] = u.value
 	}
-	if got["Candidates!N2"] != "High (6/7)" || got["Candidates!O2"] != "ok" || got["Candidates!Y2"] != "https://l" {
+	if got["Candidates!P2"] != "High (6/7)" || got["Candidates!Q2"] != "ok" {
 		t.Errorf("text columns = %v", got)
 	}
-	if api.updateRowRange != "Candidates!P2:V2" {
-		t.Errorf("criteria range = %q, want Candidates!P2:V2", api.updateRowRange)
+	// Evidence links go through the rich-text path, not a plain value write.
+	if got["Candidates!AA2"] != "" {
+		t.Errorf("evidence links should not be written as a plain value, got %q", got["Candidates!AA2"])
+	}
+	if api.linkedLinesCol != int(ColumnEvidenceLinks) || api.linkedLinesRow != 2 {
+		t.Errorf("linked lines target = row %d col %d, want row 2 col %d", api.linkedLinesRow, api.linkedLinesCol, int(ColumnEvidenceLinks))
+	}
+	if len(api.linkedLinesLines) != 1 || api.linkedLinesLines[0] != (LinkedLine{Text: "Submission", URL: "https://l"}) {
+		t.Errorf("linked lines = %#v", api.linkedLinesLines)
+	}
+	if api.updateRowRange != "Candidates!R2:X2" {
+		t.Errorf("criteria range = %q, want Candidates!R2:X2", api.updateRowRange)
 	}
 	// Assert all 7 positions so a reordering inside writeCriteria can't slip a
 	// criterion into the wrong checkbox column.
@@ -567,6 +598,35 @@ func TestWriteDigestColumns(t *testing.T) {
 	}
 }
 
+func TestLinkedCellRuns(t *testing.T) {
+	text, runs := linkedCellRuns([]LinkedLine{
+		{Text: "Submission", URL: "https://a"},
+		{Text: "Sync proof", URL: "https://b"},
+	})
+	if text != "Submission\nSync proof" {
+		t.Fatalf("text = %q", text)
+	}
+	// One run per link, plus a link-closing run on the separating newline so the
+	// first link does not bleed into the second line.
+	want := []linkRun{
+		{start: 0, uri: "https://a"},
+		{start: 10, uri: ""},
+		{start: 11, uri: "https://b"},
+	}
+	if len(runs) != len(want) {
+		t.Fatalf("got %d runs, want %d: %#v", len(runs), len(want), runs)
+	}
+	for i := range want {
+		if runs[i] != want[i] {
+			t.Errorf("run[%d] = %#v, want %#v", i, runs[i], want[i])
+		}
+	}
+
+	if text, runs := linkedCellRuns(nil); text != "" || len(runs) != 0 {
+		t.Errorf("empty input: text=%q runs=%#v", text, runs)
+	}
+}
+
 func TestMarkDuplicateRow(t *testing.T) {
 	api := &fakeAPI{}
 	if err := MarkDuplicateRow(context.Background(), api, "id", "Candidates", 3, 5); err != nil {
@@ -576,15 +636,15 @@ func TestMarkDuplicateRow(t *testing.T) {
 	for _, u := range api.updates {
 		got[u.rangeA1] = u.value
 	}
-	if got["Candidates!N3"] != "Duplicate of row 5" {
-		t.Errorf("Readiness = %q", got["Candidates!N3"])
+	if got["Candidates!P3"] != "Duplicate of row 5" {
+		t.Errorf("Readiness = %q", got["Candidates!P3"])
 	}
-	for _, cell := range []string{"O3", "W3", "X3", "Y3"} {
+	for _, cell := range []string{"Q3", "Y3", "Z3", "AA3"} {
 		if v, ok := got["Candidates!"+cell]; !ok || v != "" {
 			t.Errorf("%s should be cleared (got %q, present=%v)", cell, v, ok)
 		}
 	}
-	if api.updateRowRange != "Candidates!P3:V3" || len(api.updateRowValues) != 7 || api.updateRowValues[0] != false {
+	if api.updateRowRange != "Candidates!R3:X3" || len(api.updateRowValues) != 7 || api.updateRowValues[0] != false {
 		t.Errorf("criteria not cleared: range=%q vals=%v", api.updateRowRange, api.updateRowValues)
 	}
 }
@@ -594,15 +654,15 @@ func TestEnsureHarvestLayout(t *testing.T) {
 	if err := EnsureHarvestLayout(context.Background(), api, "id", "Candidates"); err != nil {
 		t.Fatal(err)
 	}
-	// one checkbox range: criteria P-V (ColumnSetup..ColumnSafety+1). No Selected.
+	// one checkbox range: criteria R-X (ColumnSetup..ColumnSafety+1). No Selected.
 	if len(api.checkboxes) != 1 {
 		t.Fatalf("checkbox calls = %v, want 1 (criteria only)", api.checkboxes)
 	}
 	if api.checkboxes[0] != [2]Column{ColumnSetup, ColumnSafety + 1} {
 		t.Errorf("criteria checkbox range = %v", api.checkboxes[0])
 	}
-	// assessment header row N1:Y1 written
-	if !hasUpdateRow(api, "Candidates!N1:Y1") {
+	// assessment header row P1:AA1 written
+	if !hasUpdateRow(api, "Candidates!P1:AA1") {
 		t.Errorf("assessment header not written; calls=%v", api.updateRowCalls)
 	}
 	// evidence tab ensured, by its derived name
@@ -662,8 +722,8 @@ func TestDiscordIDFromUserURL(t *testing.T) {
 		{"https://discord.com/users/@everyone", "", false},                               // non-numeric
 		{"https://discord.com/users/abc", "", false},                                     // non-numeric
 		{"https://discord.com/users/", "", false},
-		{"https://example.com/users/123456789012345678", "", false},      // wrong host
-		{"https://discord.com/users/123456789012345678/x", "", false},    // trailing path
+		{"https://example.com/users/123456789012345678", "", false},   // wrong host
+		{"https://discord.com/users/123456789012345678/x", "", false}, // trailing path
 		{"", "", false},
 	}
 	for _, tt := range tests {
@@ -671,5 +731,14 @@ func TestDiscordIDFromUserURL(t *testing.T) {
 		if got != tt.want || ok != tt.ok {
 			t.Errorf("DiscordIDFromUserURL(%q) = (%q, %v), want (%q, %v)", tt.in, got, ok, tt.want, tt.ok)
 		}
+	}
+}
+
+func TestColumnLetters_ArchitectureAndBackup(t *testing.T) {
+	if got := columnLetter(ColumnArchitecture); got != "M" {
+		t.Errorf("ColumnArchitecture letter = %q, want M", got)
+	}
+	if got := columnLetter(ColumnBackupPlan); got != "N" {
+		t.Errorf("ColumnBackupPlan letter = %q, want N", got)
 	}
 }

@@ -13,6 +13,8 @@ const (
 	FieldOperatorAddress = "Operator address"
 	FieldValoperLink     = "Valoper link"
 	FieldIntroduction    = "Introduction"
+	FieldArchitecture    = "Architecture"
+	FieldBackupPlan      = "Backup plan"
 )
 
 const embedFieldMax = 1024
@@ -30,7 +32,7 @@ func truncateRunes(s string, max int) string {
 	return string(r[:max-1]) + "…"
 }
 
-func BuildSubmissionEmbed(row int, candidateID, moniker, operatorAddr, valoperLink, introduction string) *discordgo.MessageEmbed {
+func BuildSubmissionEmbed(row int, candidateID, moniker, operatorAddr, valoperLink, introduction, architecture, backupPlan string) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title:       "New validator submission",
 		Description: fmt.Sprintf("From <@%s>", candidateID),
@@ -39,6 +41,8 @@ func BuildSubmissionEmbed(row int, candidateID, moniker, operatorAddr, valoperLi
 			{Name: FieldOperatorAddress, Value: operatorAddr},
 			{Name: FieldValoperLink, Value: valoperLink},
 			{Name: FieldIntroduction, Value: truncateRunes(introduction, embedFieldMax)},
+			{Name: FieldArchitecture, Value: truncateRunes(architecture, embedFieldMax)},
+			{Name: FieldBackupPlan, Value: truncateRunes(backupPlan, embedFieldMax)},
 		},
 		Footer: &discordgo.MessageEmbedFooter{Text: rowref.Encode(row, candidateID)},
 	}

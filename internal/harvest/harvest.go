@@ -148,7 +148,39 @@ type DigestCandidate struct {
 	ReadinessScore string            `json:"readiness_score"`
 	Summary        string            `json:"summary"`
 	Criteria       map[string]string `json:"criteria"`
-	EvidenceLinks  []string          `json:"evidence_links"`
+	EvidenceLinks  []EvidenceLink    `json:"evidence_links"`
+}
+
+// EvidenceLink is one titled, clickable permalink a reviewer should open first.
+// The competency-digest skill emits a title for every link.
+type EvidenceLink struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+// UnmarshalJSON accepts either a {title,url} object or a bare URL string, so
+// digests produced before evidence links carried titles still load.
+func (e *EvidenceLink) UnmarshalJSON(data []byte) error {
+	var url string
+	if err := json.Unmarshal(data, &url); err == nil {
+		e.Title, e.URL = "", url
+		return nil
+	}
+	type raw EvidenceLink
+	var r raw
+	if err := json.Unmarshal(data, &r); err != nil {
+		return err
+	}
+	*e = EvidenceLink(r)
+	return nil
+}
+
+// Label is the visible link text, falling back to the URL when no title is set.
+func (e EvidenceLink) Label() string {
+	if strings.TrimSpace(e.Title) != "" {
+		return e.Title
+	}
+	return e.URL
 }
 
 // Build attributes messages to candidates, computes signals, redacts secrets,

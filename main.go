@@ -59,7 +59,7 @@ func main() {
 	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
 		log.Fatalf("ensure frozen header (approved): %v", err)
 	}
-	// Harvest assessment layer: N-Y columns + criterion checkboxes, the -evidence tab.
+	// Harvest assessment layer: P-AA columns + criterion checkboxes, the -evidence tab.
 	if err := sheet.EnsureHarvestLayout(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure harvest layout: %v", err)
 	}

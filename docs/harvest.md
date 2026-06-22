@@ -12,21 +12,22 @@ verdict, only an assessment the reviewers act on.
 
 ## Layout (builds on PR #4's schema)
 
-The intake columns A-M are PR #4's (Candidate … Moniker J, Operator address K …
-Review message link M). The harvest appends its assessment columns N-Y to the
-same source tab:
+The intake columns A-O are PR #4's plus the submit modal's Architecture (M) and
+Backup plan (N) (Candidate … Moniker J, Operator address K, Introduction L,
+Architecture M, Backup plan N, Review message link O). The harvest appends its
+assessment columns P-AA to the same source tab:
 
 | col | name | written by | content |
 | --- | ---- | ---------- | ------- |
-| N | Readiness | `/harvest-import` | band + score, e.g. `High (6/7)`; `Duplicate of row N` on a collapsed row |
-| O | Summary | `/harvest-import` | 1-3 sentence digest |
-| P-V | Setup … Safety | `/harvest-import` | seven criterion **checkboxes**, ticked when `found` |
-| W | Red flags | `/harvest` | deterministic secret-leak kinds, or empty |
-| X | Engagement | `/harvest` | e.g. `12 msgs, 5 days, last 2026-06-10` |
-| Y | Evidence links | `/harvest-import` | the skill's curated key permalinks |
+| P | Readiness | `/harvest-import` | band + score, e.g. `High (6/7)`; `Duplicate of row N` on a collapsed row |
+| Q | Summary | `/harvest-import` | 1-3 sentence digest |
+| R-X | Setup … Safety | `/harvest-import` | seven criterion **checkboxes**, ticked when `found` |
+| Y | Red flags | `/harvest` | deterministic secret-leak kinds, or empty |
+| Z | Engagement | `/harvest` | e.g. `12 msgs, 5 days, last 2026-06-10` |
+| AA | Evidence links | `/harvest-import` | the skill's curated key permalinks |
 
 The bot **refreshes its assessment columns** every run and **never writes the
-human cells** (A-M: Reviewers, Missing criteria, Decision date, GovDAO status,
+human cells** (A-O: Reviewers, Missing criteria, Decision date, GovDAO status,
 etc.). Curation of good validators is done with the **Status** column, which
 feeds PR #4's `-approved` view; the harvest only informs that decision.
 
@@ -35,10 +36,10 @@ feeds PR #4's `-approved` view; the harvest only informs that decision.
 `EnsureHarvestLayout` provisions these on startup (alongside PR #4's `Ensure`,
 `EnsureApprovedView`, dropdown/colors/freeze):
 
-- **source tab** (e.g. `Candidates`) — the review interface: A-M intake + N-Y
+- **source tab** (e.g. `Candidates`) — the review interface: A-O intake + P-AA
   assessment, status dropdown/colors, frozen header.
 - **`{source}-approved`** — a live view of the GovDAO-progressing rows, mirroring
-  every column A-Y (intake plus assessment), so the chosen-validators list carries
+  every column A-AA (intake plus assessment), so the chosen-validators list carries
   the readiness, criteria, and red flags too; reviewers move candidates here via
   the Status column.
 - **`{source}-evidence`** — the raw harvested messages, one per row (audit trail).
@@ -55,7 +56,7 @@ feeds PR #4's `-approved` view; the harvest only informs that decision.
    `digest.json` (summary, per-criterion state, readiness band).
 3. **`/harvest-import`** (reviewer-only, takes `digest.json`) refreshes Readiness,
    Summary, Evidence links, and the seven criterion checkboxes. The human columns
-   (A-M) are never touched.
+   (A-O) are never touched.
 
 `harvest.json` is ephemeral so leaked-secret context is never posted to a
 channel. Both files move through Discord attachments, so the bot and the skill
@@ -91,8 +92,9 @@ column); the skill additionally judges described unsafe handling.
 and `reviewer_context`. Secrets in any text are replaced with `[REDACTED:<kind>]`.
 
 `digest.json` (skill → bot): per candidate `row`, `readiness`, `readiness_score`,
-`summary`, the seven `criteria` states, and `evidence_links`. Only `row` locates
-the Sheet row.
+`summary`, the seven `criteria` states, and `evidence_links` (each a
+`{title, url}`, rendered as a titled clickable link in the Evidence links
+column). Only `row` locates the Sheet row.
 
 ## Prerequisites
 
@@ -106,7 +108,7 @@ the Sheet row.
 1. Window closes. A reviewer runs `/harvest`; save the attached `harvest.json`.
 2. Run the `competency-digest` skill: `harvest.json` → `digest.json` (review it).
 3. A reviewer runs `/harvest-import` with `digest.json`.
-4. On the source tab: sort by Readiness, read the criterion checkboxes (P-V),
+4. On the source tab: sort by Readiness, read the criterion checkboxes (R-X),
    check Red flags, open Evidence links. Two reviewers decide, then set the
    candidate's **Status** (e.g. `Approved` / `GovDAO pending`). PR #4's
    `-approved` tab is the resulting good-validators list.

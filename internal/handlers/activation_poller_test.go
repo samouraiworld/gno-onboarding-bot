@@ -52,10 +52,11 @@ type fakeSheetAPI struct {
 
 func (f *fakeSheetAPI) Get(ctx context.Context, spreadsheetID, rangeA1 string) ([][]interface{}, error) {
 	cell := rangeA1[strings.Index(rangeA1, "!")+1:]
-	if cell == "A2:M" {
+	if strings.HasPrefix(cell, "A2:") { // ReadCandidates band (A2:<lastIntakeCol>)
 		return f.candidates, nil
 	}
-	if strings.HasPrefix(cell, "C") {
+	if strings.HasPrefix(cell, "C") { // ReadStatus single cell C<row>
+
 		if row, err := strconv.Atoi(cell[1:]); err == nil {
 			if s, ok := f.statusByRow[row]; ok {
 				return [][]interface{}{{s}}, nil

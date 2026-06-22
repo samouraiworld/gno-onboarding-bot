@@ -292,7 +292,7 @@ func handleHarvestImport(s *discordgo.Session, i *discordgo.InteractionCreate, c
 			skipNotes = append(skipNotes, fmt.Sprintf("row %d (digest %q vs tracker %q)", c.Row, c.Candidate, trackerName))
 			continue
 		}
-		if err := sheet.WriteDigestColumns(ctx, api, cfg.SheetID, cfg.SheetName, c.Row, c.ReadinessCell(), c.Summary, strings.Join(c.EvidenceLinks, "\n"), c.CriteriaBools()); err != nil {
+		if err := sheet.WriteDigestColumns(ctx, api, cfg.SheetID, cfg.SheetName, c.Row, c.ReadinessCell(), c.Summary, evidenceLines(c.EvidenceLinks), c.CriteriaBools()); err != nil {
 			log.Printf("import: write row %d: %v", c.Row, err)
 			failed++
 			continue
@@ -415,6 +415,19 @@ func buildEvidenceRows(hf harvest.HarvestFile) [][]interface{} {
 		}
 	}
 	return rows
+}
+
+// evidenceLines turns a digest's evidence links into titled cell lines, using
+// the link's label (title, or the URL when none) and dropping any with no URL.
+func evidenceLines(links []harvest.EvidenceLink) []sheet.LinkedLine {
+	out := make([]sheet.LinkedLine, 0, len(links))
+	for _, l := range links {
+		if l.URL == "" {
+			continue
+		}
+		out = append(out, sheet.LinkedLine{Text: l.Label(), URL: l.URL})
+	}
+	return out
 }
 
 var downloadClient = &http.Client{Timeout: 30 * time.Second}

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"fmt"
 	"log"
 
@@ -42,17 +41,9 @@ func handleCandidateTestnet(s *discordgo.Session, i *discordgo.InteractionCreate
 		return
 	}
 
-	row := sheet.CandidateRow{
-		Candidate: member.User.Username,
-		Discord:   "@" + member.User.Username,
-		Status:    sheet.StatusCandidate,
-	}
-	if _, err := sheet.AppendCandidateRow(context.Background(), api, cfg.SheetID, cfg.SheetName, row); err != nil {
-		log.Printf("candidate-testnet: append candidate row for %s: %v", member.User.ID, err)
-		editEphemeral(s, i.Interaction, "Something went wrong recording your application. Please try again or contact a team member.")
-		return
-	}
-
+	// No tracker row is created at intake: the candidate's row is created by
+	// /submit-request, the only command that writes a candidate row. A candidate
+	// who never submits never appears in the tracker.
 	if err := s.GuildMemberRoleAdd(cfg.GuildID, member.User.ID, cfg.CandidateRoleID); err != nil {
 		log.Printf("candidate-testnet: add candidate role for %s: %v", member.User.ID, err)
 		editEphemeral(s, i.Interaction, "Something went wrong assigning your role. Please contact a team member.")
