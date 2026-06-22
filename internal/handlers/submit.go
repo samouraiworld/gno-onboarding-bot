@@ -60,6 +60,8 @@ func showSubmitModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *
 	}
 	err := showModal(s, i.Interaction, actionSubmit, "Submit your validator evidence", []*discordgo.TextInput{
 		{CustomID: "valoper_address", Label: "Operator address (g1...)", Style: discordgo.TextInputShort, Required: true, MaxLength: 80},
+		{CustomID: "architecture", Label: "Architecture", Style: discordgo.TextInputParagraph, Required: true, MaxLength: 1000, Placeholder: "Sentries? hardware, regions, monitoring..."},
+		{CustomID: "backup_plan", Label: "Backup / failover plan", Style: discordgo.TextInputParagraph, Required: true, MaxLength: 1000},
 	})
 	if err != nil {
 		respondError(s, i.Interaction, "Could not open the form. Please try again.")
@@ -73,11 +75,15 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 
 	data := i.ModalSubmitData()
 	input := modalValue(data, "valoper_address")
+	architecture := modalValue(data, "architecture")
+	backupPlan := modalValue(data, "backup_plan")
 	candidateID := i.Member.User.ID
 	log.Printf("submit: user=%s input=%q", i.Member.User.Username, input)
 
 	missing := forms.MissingRequired([]forms.Field{
 		{Label: "Operator address", Value: input},
+		{Label: "Architecture", Value: architecture},
+		{Label: "Backup / failover plan", Value: backupPlan},
 	})
 	if len(missing) > 0 {
 		editEphemeral(s, i.Interaction, fmt.Sprintf("Missing required field(s): %s", strings.Join(missing, ", ")))
@@ -135,6 +141,8 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 		Moniker:            moniker,
 		OperatorAddress:    addr,
 		Introduction:       description,
+		Architecture:       architecture,
+		BackupPlan:         backupPlan,
 	}
 	rowNumber, err := sheet.AppendCandidateRow(context.Background(), api, cfg.SheetID, cfg.SheetName, row)
 	submitMu.Unlock()
@@ -148,7 +156,7 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 	// Post the reviewer notification before the cosmetic writes. If it fails,
 	// roll the row back so the candidate is not left with an un-retryable
 	// orphan row (the duplicate guard only re-opens on "Needs retry" / "Declined").
-	embed := notify.BuildSubmissionEmbed(rowNumber, candidateID, moniker, addr, valoperLink, description)
+	embed := notify.BuildSubmissionEmbed(rowNumber, candidateID, moniker, addr, valoperLink, description, architecture, backupPlan)
 	notifMsg, err := s.ChannelMessageSendComplex(cfg.ValidatorReviewChannelID, &discordgo.MessageSend{
 		Content:         fmt.Sprintf("<@&%s> new submission to review.", cfg.ReviewerRoleID),
 		Embeds:          []*discordgo.MessageEmbed{embed},

@@ -24,43 +24,49 @@ const (
 	ColumnMoniker
 	ColumnOperatorAddress
 	ColumnIntroduction
-	ColumnReviewMessageLink
-	// Harvest assessment columns (N-Y), appended after the A-M intake columns.
+	// Candidate-submitted operational evidence from the /submit-request modal,
+	// grouped with the other intake fields (right after Introduction) because they
+	// are first-class submission data, not afterthoughts. Inside the contiguous
+	// intake block, so toValues writes them atomically with the rest of the row.
+	ColumnArchitecture      // M
+	ColumnBackupPlan        // N
+	ColumnReviewMessageLink // O
+	// Harvest assessment columns (P-AA), appended after the A-O intake columns.
 	// The bot refreshes these on every harvest/import. Curating "good validators"
 	// is done via the Status column + PR #4's "-approved" view, not a separate
 	// Selected column.
-	ColumnReadiness     // N
-	ColumnSummary       // O
-	ColumnSetup         // P ┐
-	ColumnSync          // Q │
-	ColumnTx            // R │ seven criterion checkboxes, in harvest.Criteria order
-	ColumnValoper       // S │
-	ColumnOps           // T │
-	ColumnComms         // U │
-	ColumnSafety        // V ┘
-	ColumnRedFlags      // W
-	ColumnEngagement    // X
-	ColumnEvidenceLinks // Y
+	ColumnReadiness     // P
+	ColumnSummary       // Q
+	ColumnSetup         // R ┐
+	ColumnSync          // S │
+	ColumnTx            // T │ seven criterion checkboxes, in harvest.Criteria order
+	ColumnValoper       // U │
+	ColumnOps           // V │
+	ColumnComms         // W │
+	ColumnSafety        // X ┘
+	ColumnRedFlags      // Y
+	ColumnEngagement    // Z
+	ColumnEvidenceLinks // AA
 )
 
 var columnLetters = []string{
 	"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-	"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y",
+	"N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "AA",
 }
 
-// criterionColumns are the seven checkbox columns (P-V), in harvest.Criteria order.
+// criterionColumns are the seven checkbox columns (R-X), in harvest.Criteria order.
 var criterionColumns = []Column{
 	ColumnSetup, ColumnSync, ColumnTx, ColumnValoper, ColumnOps, ColumnComms, ColumnSafety,
 }
 
-// derivedColumns lists the harvest assessment columns N-Y in order.
+// derivedColumns lists the harvest assessment columns P-AA in order.
 var derivedColumns = []Column{
 	ColumnReadiness, ColumnSummary,
 	ColumnSetup, ColumnSync, ColumnTx, ColumnValoper, ColumnOps, ColumnComms, ColumnSafety,
 	ColumnRedFlags, ColumnEngagement, ColumnEvidenceLinks,
 }
 
-// derivedHeaders labels the assessment columns (N-Y).
+// derivedHeaders labels the assessment columns (P-AA).
 var derivedHeaders = map[Column]string{
 	ColumnReadiness:     "Readiness",
 	ColumnSummary:       "Summary",
@@ -99,6 +105,8 @@ type CandidateRow struct {
 	Moniker            string
 	OperatorAddress    string
 	Introduction       string
+	Architecture       string
+	BackupPlan         string
 }
 
 func (r CandidateRow) toValues() []interface{} {
@@ -115,7 +123,9 @@ func (r CandidateRow) toValues() []interface{} {
 		r.Moniker,            // J
 		r.OperatorAddress,    // K
 		r.Introduction,       // L
-		"",                   // M ReviewMessageLink
+		r.Architecture,       // M
+		r.BackupPlan,         // N
+		"",                   // O ReviewMessageLink
 	}
 }
 
@@ -144,11 +154,13 @@ var Headers = []string{
 	"Moniker",
 	"Operator address",
 	"Introduction",
+	"Architecture",
+	"Backup plan",
 	"Review message link",
 }
 
-// allHeaders is the full A-Y header row: the intake headers (A-M) followed by the
-// harvest assessment headers (N-Y) in column order.
+// allHeaders is the full A-AA header row: the intake headers (A-O) followed by the
+// harvest assessment headers (P-AA) in column order.
 func allHeaders() []interface{} {
 	out := make([]interface{}, 0, len(Headers)+len(derivedColumns))
 	for _, h := range Headers {
@@ -191,7 +203,7 @@ var StatusColors = map[string]string{
 }
 
 // EnsureStatusColors installs the status-row coloring rules on sheetName,
-// coloring the full A-Y schema width of each matching row.
+// coloring the full A-AA schema width of each matching row.
 func EnsureStatusColors(ctx context.Context, api API, spreadsheetID, sheetName string) error {
 	return api.SetStatusColors(ctx, spreadsheetID, sheetName, ColumnStatus, StatusColors)
 }
@@ -261,9 +273,11 @@ func ApprovedTabName(sourceSheetName string) string {
 }
 
 // Ensure makes sure the named tab exists in the spreadsheet and that row 1
-// holds the column headers. Safe to call multiple times. Refuses to write
-// headers if row 1 has any non-empty cell, so it cannot clobber unrelated data
-// the operator may have placed there.
+// holds the intake column headers (A:O). Safe to call multiple times. Refuses
+// to write headers if row 1 has any non-empty cell, so it cannot clobber data
+// the operator already placed there: the header row is written only on an empty
+// tab. A tab that already holds an older header layout is therefore left as-is
+// and must be migrated by hand.
 func Ensure(ctx context.Context, api API, spreadsheetID, sheetName string) error {
 	if _, err := api.EnsureTab(ctx, spreadsheetID, sheetName); err != nil {
 		return fmt.Errorf("ensure tab %q: %w", sheetName, err)
@@ -287,18 +301,18 @@ func Ensure(ctx context.Context, api API, spreadsheetID, sheetName string) error
 }
 
 // EnsureApprovedView creates the "{source}-approved" tab if missing and
-// populates it with the full column headers (intake A-M plus the harvest
-// assessment columns N-Y) and a live QUERY that mirrors every column of the
+// populates it with the full column headers (intake A-O plus the harvest
+// assessment columns P-AA) and a live QUERY that mirrors every column of the
 // source tab's GovDAO-progressing rows. Safe to call multiple times.
 func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheetName string) error {
 	tab := ApprovedTabName(sourceSheetName)
 	if _, err := api.EnsureTab(ctx, spreadsheetID, tab); err != nil {
 		return fmt.Errorf("ensure tab %q: %w", tab, err)
 	}
-	lastCol := columnLetter(ColumnEvidenceLinks) // mirror the full A-Y schema
+	lastCol := columnLetter(ColumnEvidenceLinks) // mirror the full A-AA schema
 	// Always (re)write the full header row: this tab is a bot-owned view, and an
-	// older A-M header row from before the assessment columns existed must be
-	// brought up to A-Y rather than skipped.
+	// older A-O header row from before the assessment columns existed must be
+	// brought up to A-AA rather than skipped.
 	headerRange := fmt.Sprintf("%s!A1:%s1", tab, lastCol)
 	if err := api.UpdateRow(ctx, spreadsheetID, headerRange, allHeaders()); err != nil {
 		return fmt.Errorf("write headers to %q: %w", tab, err)
@@ -361,7 +375,7 @@ func rowIsEmpty(r []interface{}) bool {
 var appendMu sync.Mutex
 
 // AppendCandidateRow places a candidate row in the first fully-empty row of the
-// sheet's A:M data band (starting at row 2). It never overwrites existing data:
+// sheet's A:O data band (starting at row 2). It never overwrites existing data:
 // rows with any non-empty cell are skipped, and if no gap exists the row is
 // written one past the last row with any data.
 func AppendCandidateRow(ctx context.Context, api API, spreadsheetID, sheetName string, row CandidateRow) (int, error) {
@@ -387,9 +401,9 @@ func AppendCandidateRow(ctx context.Context, api API, spreadsheetID, sheetName s
 	return target, nil
 }
 
-// ClearRow blanks every column (A:M) of the given 1-based row. Used to roll
-// back a just-appended row when a later step of the same submission fails, so
-// the candidate can resubmit cleanly instead of being blocked by the row they
+// ClearRow blanks every intake column (A:O) of the given 1-based row. Used to
+// roll back a just-appended row when a later step of the same submission fails,
+// so the candidate can resubmit cleanly instead of being blocked by the row they
 // could not finish.
 func ClearRow(ctx context.Context, api API, spreadsheetID, sheetName string, row int) error {
 	rangeA1 := fmt.Sprintf("%s!A%d:%s%d", sheetName, row, columnLetter(Column(len(Headers)-1)), row)
@@ -436,7 +450,7 @@ func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string,
 	return nil
 }
 
-// --- Harvest assessment layer (columns N-Y, the Evidence tab) ---
+// --- Harvest assessment layer (columns P-AA, the Evidence tab) ---
 
 // EvidenceTabName is the derived raw-evidence tab the harvest manages, named
 // "{source}-evidence" (mirrors the "{source}-approved" naming of the view tab).
@@ -487,10 +501,10 @@ func cellAt(row []interface{}, idx int) string {
 	return fmt.Sprint(row[idx])
 }
 
-// ReadCandidates reads the intake rows (A2:M); header row 1 is skipped and rows
-// with an empty Candidate cell are ignored.
+// ReadCandidates reads the intake rows (A2 down to the last intake column);
+// header row 1 is skipped and rows with an empty Candidate cell are ignored.
 func ReadCandidates(ctx context.Context, api API, spreadsheetID, sheetName string) ([]TrackerRow, error) {
-	rows, err := api.Get(ctx, spreadsheetID, sheetName+"!A2:M")
+	rows, err := api.Get(ctx, spreadsheetID, fmt.Sprintf("%s!A2:%s", sheetName, columnLetter(Column(len(Headers)-1))))
 	if err != nil {
 		return nil, fmt.Errorf("read candidates: %w", err)
 	}
@@ -514,7 +528,7 @@ func ReadCandidates(ctx context.Context, api API, spreadsheetID, sheetName strin
 	return out, nil
 }
 
-// EnsureHarvestLayout provisions the assessment layer on startup: the N-Y header
+// EnsureHarvestLayout provisions the assessment layer on startup: the P-AA header
 // row + criterion checkboxes on the source tab, and the "{source}-evidence" tab.
 func EnsureHarvestLayout(ctx context.Context, api API, spreadsheetID, sheetName string) error {
 	header := make([]interface{}, len(derivedColumns))
@@ -535,7 +549,7 @@ func EnsureHarvestLayout(ctx context.Context, api API, spreadsheetID, sheetName 
 }
 
 // WriteHarvestColumns writes the deterministic columns /harvest owns: Red flags
-// (W) and Engagement (X). Refreshed each run.
+// (Y) and Engagement (Z). Refreshed each run.
 func WriteHarvestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, redFlags, engagement string) error {
 	return UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
 		ColumnRedFlags:   redFlags,
@@ -550,9 +564,9 @@ type LinkedLine struct {
 	URL  string
 }
 
-// WriteDigestColumns writes the columns /harvest-import owns: Readiness (N),
-// Summary (O), Evidence links (Y) as titled clickable links, and the seven
-// criterion checkboxes (P-V) as booleans in criterionColumns order.
+// WriteDigestColumns writes the columns /harvest-import owns: Readiness (P),
+// Summary (Q), Evidence links (AA) as titled clickable links, and the seven
+// criterion checkboxes (R-X) as booleans in criterionColumns order.
 func WriteDigestColumns(ctx context.Context, api API, spreadsheetID, sheetName string, row int, readiness, summary string, evidence []LinkedLine, criteria []bool) error {
 	if err := UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
 		ColumnReadiness: readiness,
@@ -582,7 +596,7 @@ func writeCriteria(ctx context.Context, api API, spreadsheetID, sheetName string
 
 // MarkDuplicateRow flags a superseded duplicate row: Readiness becomes
 // "Duplicate of row N" and the other assessment cells are cleared, so a stale
-// score does not linger. The human columns (A-M) are left untouched.
+// score does not linger. The human columns (A-O) are left untouched.
 func MarkDuplicateRow(ctx context.Context, api API, spreadsheetID, sheetName string, row, keptRow int) error {
 	if err := UpdateFields(ctx, api, spreadsheetID, sheetName, row, map[Column]string{
 		ColumnReadiness:     fmt.Sprintf("Duplicate of row %d", keptRow),

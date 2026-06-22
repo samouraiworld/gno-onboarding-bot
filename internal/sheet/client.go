@@ -292,7 +292,7 @@ func (c *GoogleSheetsClient) SetStatusColors(ctx context.Context, spreadsheetID,
 						SheetId:          sheetID,
 						StartRowIndex:    1,
 						StartColumnIndex: 0,
-						EndColumnIndex:   int64(len(columnLetters)), // full schema width A-Y
+						EndColumnIndex:   int64(len(columnLetters)), // full schema width A-AA
 					}},
 					BooleanRule: &sheets.BooleanRule{
 						Condition: &sheets.BooleanCondition{
