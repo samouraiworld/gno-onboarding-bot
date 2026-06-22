@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
@@ -165,6 +166,72 @@ func (c *GoogleSheetsClient) SetDropdown(ctx context.Context, spreadsheetID, she
 					ShowCustomUi: true,
 					Strict:       true,
 				},
+			},
+		}},
+	}).Context(ctx).Do()
+	return err
+}
+
+// linkRun is a resolved formatting run for a multi-link cell. An empty uri ends
+// the previous link so the separator and any later text stay unlinked.
+type linkRun struct {
+	start int
+	uri   string
+}
+
+// linkedCellRuns renders lines into one cell string (one line per link,
+// newline-separated) plus the formatting runs that confine each link to its own
+// line. Offsets are UTF-16 code units, as the Sheets API expects.
+func linkedCellRuns(lines []LinkedLine) (string, []linkRun) {
+	var b strings.Builder
+	var runs []linkRun
+	for i, ln := range lines {
+		if i > 0 {
+			runs = append(runs, linkRun{start: utf16Len(b.String())}) // close previous link
+			b.WriteString("\n")
+		}
+		runs = append(runs, linkRun{start: utf16Len(b.String()), uri: ln.URL})
+		b.WriteString(ln.Text)
+	}
+	return b.String(), runs
+}
+
+func utf16Len(s string) int { return len(utf16.Encode([]rune(s))) }
+
+// SetLinkedLines writes one cell containing one hyperlink per line: each line's
+// text links to its URL, confined to that line. Replaces the cell's prior
+// content and formatting; an empty lines slice clears the cell.
+func (c *GoogleSheetsClient) SetLinkedLines(ctx context.Context, spreadsheetID, sheetName string, row, col int, lines []LinkedLine) error {
+	sheetID, err := c.sheetIDByName(ctx, spreadsheetID, sheetName)
+	if err != nil {
+		return err
+	}
+	text, runs := linkedCellRuns(lines)
+	formatRuns := make([]*sheets.TextFormatRun, len(runs))
+	for i, r := range runs {
+		f := &sheets.TextFormat{}
+		if r.uri != "" {
+			f.Link = &sheets.Link{Uri: r.uri}
+		}
+		formatRuns[i] = &sheets.TextFormatRun{StartIndex: int64(r.start), Format: f}
+	}
+	_, err = c.svc.Spreadsheets.BatchUpdate(spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{{
+			UpdateCells: &sheets.UpdateCellsRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    int64(row - 1),
+					EndRowIndex:      int64(row),
+					StartColumnIndex: int64(col),
+					EndColumnIndex:   int64(col) + 1,
+				},
+				Rows: []*sheets.RowData{{
+					Values: []*sheets.CellData{{
+						UserEnteredValue: &sheets.ExtendedValue{StringValue: &text},
+						TextFormatRuns:   formatRuns,
+					}},
+				}},
+				Fields: "userEnteredValue,textFormatRuns",
 			},
 		}},
 	}).Context(ctx).Do()

@@ -32,7 +32,10 @@ Evidence links columns).
 4. Write a 1-3 sentence `summary`: what is solid, what is missing. Plain, factual,
    no recommendation to approve or reject.
 5. Set `evidence_links` to the 1-4 most useful permalinks (the submission, the
-   sync proof, the tx, anything a reviewer should open first).
+   sync proof, the tx, anything a reviewer should open first). Each entry is an
+   object with a `url` and a short `title` naming what the link is (e.g.
+   `Submission`, `Sync proof`, `Valoper tx`), so a reviewer sees a clickable
+   label instead of a bare URL. Never leave `title` empty.
 6. Compute `readiness_score` as `<count of found>/7` and `readiness` from the
    band table.
 7. Validate against the rules below, then write `digest.json`.
@@ -102,7 +105,10 @@ is never a failure; it is neutral.
         "setup": "found", "sync": "found", "tx": "not_found",
         "valoper": "found", "ops": "found", "comms": "found", "safety": "found"
       },
-      "evidence_links": ["https://discord.com/channels/..."]
+      "evidence_links": [
+        {"title": "Submission", "url": "https://discord.com/channels/..."},
+        {"title": "Sync proof", "url": "https://discord.com/channels/..."}
+      ]
     }
   ]
 }

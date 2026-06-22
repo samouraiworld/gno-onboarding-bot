@@ -211,6 +211,28 @@ func TestCells(t *testing.T) {
 	}
 }
 
+func TestEvidenceLinkUnmarshal(t *testing.T) {
+	in := `{"candidates":[{"row":2,"readiness":"High","evidence_links":[
+		{"title":"Submission","url":"https://a"},
+		"https://b"
+	]}]}`
+	var got DigestFile
+	if err := json.Unmarshal([]byte(in), &got); err != nil {
+		t.Fatal(err)
+	}
+	links := got.Candidates[0].EvidenceLinks
+	if len(links) != 2 {
+		t.Fatalf("got %d links, want 2", len(links))
+	}
+	if links[0] != (EvidenceLink{Title: "Submission", URL: "https://a"}) {
+		t.Errorf("object form = %#v", links[0])
+	}
+	// Legacy bare-string form loads with no title; Label falls back to the URL.
+	if links[1] != (EvidenceLink{URL: "https://b"}) || links[1].Label() != "https://b" {
+		t.Errorf("string form = %#v, label %q", links[1], links[1].Label())
+	}
+}
+
 func TestParseDigest(t *testing.T) {
 	good := DigestFile{Candidates: []DigestCandidate{
 		{Row: 2, Candidate: "alice", Readiness: "High", ReadinessScore: "6/7", Summary: "ok",
