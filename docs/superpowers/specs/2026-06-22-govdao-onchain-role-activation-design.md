@@ -85,7 +85,26 @@ lookup. Reuses the existing `gno_rpc_endpoint`.
 Edge case: the `validators` endpoint may paginate (default page size). The method must read
 all pages (or document the cap) so large sets aren't silently truncated.
 
-### 4. The poller
+### 4. Resolving the candidate's Discord ID
+
+To grant/remove a role and DM the candidate, the poller needs the candidate's **numeric
+Discord user ID**. The Sheet does not store it as a plain value: column B holds
+`@username` text, and the ID lives only inside that cell's **hyperlink**, written by
+[submit.go](../../../internal/handlers/submit.go)'s `SetLinkedText` call as
+`https://discord.com/users/<id>`. (The Approve handler doesn't have this problem — it reads
+the ID from the review-notification embed, which the poller has no access to.)
+
+So the poller reads the column-B hyperlink back and parses the ID out of it — the data is
+already persisted, so this needs no schema change and no change to submit:
+
+- Add `CellLink(ctx, spreadsheetID, sheetName string, row, col int) (string, error)` to the
+  `sheet.API` interface, implemented on `GoogleSheetsClient` via `spreadsheets.get` with
+  `IncludeGridData(true)` reading `textFormatRuns[0].format.link.uri`. The `fakeAPI` test
+  double gains a trivial implementation.
+- Add a pure helper `sheet.DiscordIDFromUserURL(url string) (id string, ok bool)` that
+  extracts `<id>` from a `https://discord.com/users/<id>` URL (unit-tested).
+
+### 5. The poller
 
 A new goroutine (new file in `internal/handlers`, reusing `sendDM`, config, session),
 started from [main.go](../../../main.go) after command registration, driven by a
@@ -94,13 +113,17 @@ started from [main.go](../../../main.go) after command registration, driven by a
 Each tick:
 
 1. Fetch the active validator set once via `ValidatorSet`.
-2. Read the Sheet rows whose status is `GovDAO pending`.
+2. Read the Sheet rows whose status is `GovDAO pending` (via the existing
+   [ReadCandidates](../../../internal/sheet/sheet.go), filtering on `Status`).
 3. For each such row:
    a. Take the operator address (column K).
    b. `qrender` the valopers profile and `ParseRender` it to get the **fresh** signing
       address (always re-derived — never cached/stored).
-   c. If that signing address is in the active set, **activate** (below).
-   d. If not, leave the row untouched for the next tick.
+   c. If that signing address is **not** in the active set, leave the row untouched for the
+      next tick.
+   d. If it **is**, resolve the Discord ID via `CellLink`(column B) +
+      `DiscordIDFromUserURL`. If the ID can't be resolved, log and skip (a reviewer can
+      grant manually). Otherwise **activate** (below).
 
 **Activation order (preserves "Sheet write before any role mutation"):**
 
@@ -114,7 +137,7 @@ Idempotency: the poller only scans `GovDAO pending` rows, so an already-activate
 leaves the row at `GovDAO submitted`; it won't be retried automatically — logged for manual
 follow-up, consistent with how the Approve handler reports partial failures today.
 
-### 5. Configuration
+### 6. Configuration
 
 Add `validator_poll_interval` to [config.go](../../../internal/config/config.go) and
 `config.example.yaml`, parsed as a Go duration (e.g. `"5m"`). Default to 5 minutes when
@@ -122,7 +145,7 @@ unset or non-positive. Not a required field (the bot runs without it, using the 
 
 ## Status lifecycle (after this change)
 
-```
+```text
 Candidate
   → Challenge in progress        (submit-request)
   → GovDAO pending               (reviewer Approve — NO role change)
@@ -164,7 +187,8 @@ Following the repo's split (pure logic unit-tested; Discord/session code manual)
 
 - **Unit:** extend `valoper` tests — `ParseRender` extracts the signing address (and tolerates
   its absence); `ValidatorSet` parses a sample `validators` JSON response into the address
-  set (with a fake HTTP transport). Config: `validator_poll_interval` parsing + default.
+  set (with a fake HTTP transport). `sheet.DiscordIDFromUserURL` extracts the ID (and
+  rejects non-matching URLs). Config: `validator_poll_interval` parsing + default.
 - **Manual (`MANUAL_TESTING.md`):** Approve grants no role and only sets `GovDAO pending`;
   with a candidate whose signing address is in the set, the poller grants the role, removes
   the candidate role, sets `GovDAO submitted`, and DMs the `activated` message within one
