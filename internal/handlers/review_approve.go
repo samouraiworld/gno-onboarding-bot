@@ -62,17 +62,6 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 		return
 	}
 
-	if err := s.GuildMemberRoleAdd(cfg.GuildID, candidateID, cfg.ValidatorRoleID); err != nil {
-		log.Printf("approve: add validator role for %s: %v", candidateID, err)
-		editEphemeral(s, i.Interaction, "Updated the tracker, but could not grant the Testnet Validator role. Please assign it manually.")
-		return
-	}
-	if err := s.GuildMemberRoleRemove(cfg.GuildID, candidateID, cfg.CandidateRoleID); err != nil {
-		log.Printf("approve: remove candidate role for %s: %v", candidateID, err)
-		editEphemeral(s, i.Interaction, "Granted the Testnet Validator role, but could not remove Testnet Validator Candidate. Please remove it manually.")
-		return
-	}
-
 	message, err := tpl.Approve()
 	if err != nil {
 		log.Printf("approve: render template: %v", err)
