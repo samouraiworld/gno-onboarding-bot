@@ -175,6 +175,7 @@ type API interface {
 	SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error
 	ClearValues(ctx context.Context, spreadsheetID, rangeA1 string) error
 	WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, values [][]interface{}) error
+	CellLink(ctx context.Context, spreadsheetID, sheetName string, row, col int) (string, error)
 }
 
 // StatusColors maps each status to a light hex background color used by
@@ -423,6 +424,22 @@ func FindByOperatorAddress(ctx context.Context, api API, spreadsheetID, sheetNam
 		return i + 2, status, nil
 	}
 	return 0, "", nil
+}
+
+// DiscordIDFromUserURL extracts the numeric user ID from a Discord profile URL
+// of the form https://discord.com/users/<id>. Returns ok=false for any other
+// shape. The bot persists this URL as the column-B hyperlink at submit time, so
+// the activation poller reads the candidate's Discord ID back from it.
+func DiscordIDFromUserURL(url string) (string, bool) {
+	const prefix = "https://discord.com/users/"
+	if !strings.HasPrefix(url, prefix) {
+		return "", false
+	}
+	id := strings.TrimPrefix(url, prefix)
+	if id == "" || strings.ContainsAny(id, "/?#") {
+		return "", false
+	}
+	return id, true
 }
 
 func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string, row int, fields map[Column]string) error {

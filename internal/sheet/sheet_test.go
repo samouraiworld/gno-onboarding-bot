@@ -152,6 +152,10 @@ func (f *fakeAPI) FreezeHeaderRow(ctx context.Context, spreadsheetID, sheetName 
 	return f.freezeErr
 }
 
+func (f *fakeAPI) CellLink(ctx context.Context, spreadsheetID, sheetName string, row, col int) (string, error) {
+	return "", nil
+}
+
 func TestParseRowNumber(t *testing.T) {
 	cases := []struct {
 		in      string
@@ -620,4 +624,24 @@ func hasUpdateRow(api *fakeAPI, rangeA1 string) bool {
 		}
 	}
 	return false
+}
+
+func TestDiscordIDFromUserURL(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"https://discord.com/users/123456789", "123456789", true},
+		{"https://discord.com/users/", "", false},
+		{"https://example.com/users/123", "", false},
+		{"https://discord.com/users/123/extra", "", false},
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := DiscordIDFromUserURL(tt.in)
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("DiscordIDFromUserURL(%q) = (%q, %v), want (%q, %v)", tt.in, got, ok, tt.want, tt.ok)
+		}
+	}
 }
