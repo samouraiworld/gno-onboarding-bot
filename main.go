@@ -101,6 +101,11 @@ func main() {
 		log.Fatalf("register submit command: %v", err)
 	}
 
+	pollCtx, cancelPoll := context.WithCancel(context.Background())
+	defer cancelPoll()
+	handlers.StartActivationPoller(pollCtx, s, cfg, sheetsClient, tpl, renderer, cfg.ValidatorPollEvery)
+	log.Printf("activation poller running every %s", cfg.ValidatorPollEvery)
+
 	log.Println("bot is running, press Ctrl+C to exit")
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

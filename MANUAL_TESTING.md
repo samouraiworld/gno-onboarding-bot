@@ -57,3 +57,10 @@ Prereq: enable the privileged **Message Content** intent and give the bot **Read
 - [ ] Run the `competency-digest` skill on `harvest.json` → `digest.json`, then `/harvest-import` it: Readiness (N), Summary (O), criterion checkboxes (P-V), Evidence links (Y) fill; the human columns (A-M) are untouched.
 - [ ] Curation: set a reviewed candidate's Status to `Approved`/`GovDAO pending` → it appears in PR #4's `-approved` tab (no separate Selected column).
 - [ ] `/harvest-import` with a malformed file → ephemeral error, no writes.
+
+## GovDAO on-chain role activation
+
+1. **Approve grants no role.** Run **Approve** on a submission. Expect: tracker row → `GovDAO pending`, candidate DM received, GovDAO contact pinged, and the candidate's roles **unchanged** (still `Testnet Validator Candidate`, no `Testnet Validator`).
+2. **Poller activates on-chain membership.** With a candidate whose valoper's signing address is in `<gno_rpc_endpoint>/validators`, wait one `validator_poll_interval`. Expect: tracker row → `GovDAO submitted`, the `Testnet Validator` role granted and `Testnet Validator Candidate` removed, and the `activated` DM received.
+3. **No double-processing.** On the next tick, the now-`GovDAO submitted` row is left untouched (no duplicate DM/role calls in the logs).
+4. **Unresolvable Discord ID.** For a `GovDAO pending` row whose column-B cell has no `https://discord.com/users/<id>` hyperlink, expect a single log line asking to grant the role manually, and no status change.
