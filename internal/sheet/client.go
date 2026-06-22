@@ -185,13 +185,16 @@ type linkRun struct {
 func linkedCellRuns(lines []LinkedLine) (string, []linkRun) {
 	var b strings.Builder
 	var runs []linkRun
+	offset := 0 // running UTF-16 length of what's been written
 	for i, ln := range lines {
 		if i > 0 {
-			runs = append(runs, linkRun{start: utf16Len(b.String())}) // close previous link
+			runs = append(runs, linkRun{start: offset}) // close previous link
 			b.WriteString("\n")
+			offset++ // newline is one UTF-16 unit
 		}
-		runs = append(runs, linkRun{start: utf16Len(b.String()), uri: ln.URL})
+		runs = append(runs, linkRun{start: offset, uri: ln.URL})
 		b.WriteString(ln.Text)
+		offset += utf16Len(ln.Text)
 	}
 	return b.String(), runs
 }
@@ -239,36 +242,10 @@ func (c *GoogleSheetsClient) SetLinkedLines(ctx context.Context, spreadsheetID, 
 }
 
 // SetLinkedText writes a single cell with text and a hyperlink (rich text),
-// locale-independent — no formula involved.
+// locale-independent — no formula involved. It is the single-link case of
+// SetLinkedLines.
 func (c *GoogleSheetsClient) SetLinkedText(ctx context.Context, spreadsheetID, sheetName string, row, col int, text, url string) error {
-	sheetID, err := c.sheetIDByName(ctx, spreadsheetID, sheetName)
-	if err != nil {
-		return err
-	}
-	_, err = c.svc.Spreadsheets.BatchUpdate(spreadsheetID, &sheets.BatchUpdateSpreadsheetRequest{
-		Requests: []*sheets.Request{{
-			UpdateCells: &sheets.UpdateCellsRequest{
-				Range: &sheets.GridRange{
-					SheetId:          sheetID,
-					StartRowIndex:    int64(row - 1),
-					EndRowIndex:      int64(row),
-					StartColumnIndex: int64(col),
-					EndColumnIndex:   int64(col) + 1,
-				},
-				Rows: []*sheets.RowData{{
-					Values: []*sheets.CellData{{
-						UserEnteredValue: &sheets.ExtendedValue{StringValue: &text},
-						TextFormatRuns: []*sheets.TextFormatRun{{
-							StartIndex: 0,
-							Format:     &sheets.TextFormat{Link: &sheets.Link{Uri: url}},
-						}},
-					}},
-				}},
-				Fields: "userEnteredValue,textFormatRuns",
-			},
-		}},
-	}).Context(ctx).Do()
-	return err
+	return c.SetLinkedLines(ctx, spreadsheetID, sheetName, row, col, []LinkedLine{{Text: text, URL: url}})
 }
 
 // SetStatusColors replaces this sheet's conditional formatting rules with one
