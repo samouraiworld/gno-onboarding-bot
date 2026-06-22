@@ -43,9 +43,6 @@ sheet_id: ""
 # The tab name (the label at the bottom of the Sheet).
 sheet_name: "Candidates"
 
-# Free text, shown to candidates as the review turnaround.
-review_sla: "5 business days"
-
 # RPC endpoint of the gno chain, used to verify valoper registration on-chain at /submit.
 gno_rpc_endpoint: ""   # e.g. https://rpc.test13.testnets.gno.land
 

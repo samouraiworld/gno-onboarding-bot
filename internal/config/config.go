@@ -23,7 +23,6 @@ type Config struct {
 	GoogleCredentialsFile    string `yaml:"google_credentials_file"`
 	SheetID                  string `yaml:"sheet_id"`
 	SheetName                string `yaml:"sheet_name"`
-	ReviewSLA                string `yaml:"review_sla"`
 	GnoRPCEndpoint           string `yaml:"gno_rpc_endpoint"`
 	GnoWebBaseURL            string `yaml:"gnoweb_base_url"`
 
@@ -74,7 +73,6 @@ func (c Config) validate() error {
 		"google_credentials_file":     c.GoogleCredentialsFile,
 		"sheet_id":                    c.SheetID,
 		"sheet_name":                  c.SheetName,
-		"review_sla":                  c.ReviewSLA,
 		"gno_rpc_endpoint":            c.GnoRPCEndpoint,
 		"gnoweb_base_url":             c.GnoWebBaseURL,
 	}

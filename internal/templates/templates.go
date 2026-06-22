@@ -72,8 +72,8 @@ func (t *Templates) Welcome() (string, error) {
 	return render(t.welcome, nil)
 }
 
-func (t *Templates) Acknowledge(timeframe string) (string, error) {
-	return render(t.acknowledge, struct{ Timeframe string }{timeframe})
+func (t *Templates) Acknowledge() (string, error) {
+	return render(t.acknowledge, nil)
 }
 
 func (t *Templates) RequestMissingInfo(items []string) (string, error) {

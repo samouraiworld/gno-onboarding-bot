@@ -178,7 +178,7 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 		log.Printf("submit: extend status dropdown to row %d: %v", rowNumber, err)
 	}
 
-	ack, err := tpl.Acknowledge(cfg.ReviewSLA)
+	ack, err := tpl.Acknowledge()
 	if err != nil {
 		editEphemeral(s, i.Interaction, "Submission received, but the acknowledgement template failed to render. Please contact a team member.")
 		return

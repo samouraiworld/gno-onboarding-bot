@@ -1,10 +1,10 @@
 welcome: |-
   Welcome! The `Testnet Validator Candidate` role has been assigned.
 
-  You now have access to `#testnet-onboarding`. Read the pinned instructions and complete the challenge. Once the node and application are ready, run `/submit-request` in `#testnet-onboarding` and provide only the validator address.
+  You now have access to `#testnet-onboarding`. Read the pinned instructions and complete the challenge. Once the node and application are ready, run `/submit-request` in `#testnet-onboarding` and provide only the operator address.
 
 acknowledge: |-
-  Thanks, we received the validator address submitted with `/submit-request`. The Gno team will review it against the published criteria and reply by `{{.Timeframe}}`.
+  Thanks, we received the operator address submitted with `/submit-request`. The Gno team will review it against the published criteria and reply.
 
 request_missing_info: |-
   Thanks. Before we can finish the review, please correct:
@@ -12,7 +12,7 @@ request_missing_info: |-
   {{range $i, $item := .Items}}{{if $i}}
   {{end}}- `{{$item}}`{{end}}
 
-  After fixing it, run `/submit-request` again and provide only the validator address.
+  After fixing it, run `/submit-request` again and provide only the operator address.
 
 approve: |-
   Congratulations, you passed the onboarding challenge. We assigned you the `Testnet Validator` role.
@@ -27,7 +27,7 @@ decline: |-
 
   The `Testnet Validator Candidate` role will now be removed.
 
-  To apply again, restart the process from the beginning: run `/candidate-testnet` in `┋💬ㆍgeneral-chat`, complete every pinned onboarding step, then run `/submit-request` with only the validator address. The new application will be reviewed independently.
+  To apply again, restart the process from the beginning: run `/candidate-testnet` in `┋💬ㆍgeneral-chat`, complete every pinned onboarding step, then run `/submit-request` with only the operator address. The new application will be reviewed independently.
 
 escalate_to_call: |-
   Thanks for the submission. Before we decide, we need to clarify `{{.Topic}}`. Can you join a short technical call at one of these times: `{{.Options}}`? It will focus on `{{.Scope}}`.

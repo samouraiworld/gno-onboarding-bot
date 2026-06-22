@@ -30,7 +30,6 @@ govdao_contact_user_id: "8"
 google_credentials_file: "creds.json"
 sheet_id: "sheet-id"
 sheet_name: "Candidates"
-review_sla: "5 business days"
 gno_rpc_endpoint: "https://rpc.example:443"
 gnoweb_base_url: "https://gnoweb.example"
 `
