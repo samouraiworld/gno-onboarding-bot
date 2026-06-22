@@ -57,3 +57,9 @@ harvest_since: ""
 
 # Per-channel message cap.
 harvest_max_messages: 2000
+
+# How often the bot checks the chain's active validator set to auto-grant the
+# Testnet Validator role once a "GovDAO pending" candidate is admitted. Go
+# duration (e.g. "5m", "30s"). Optional; defaults to 5m. Minimum 5s (smaller
+# values are rejected to avoid hammering the RPC node and the Sheets API).
+validator_poll_interval: "5m"

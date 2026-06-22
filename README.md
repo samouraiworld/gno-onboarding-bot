@@ -1,6 +1,6 @@
 # gno-onboarding-bot
 
-Go Discord bot that automates the test13 validator onboarding lifecycle: candidate intake, evidence submission, reviewer decisions, and the GovDAO handoff. A Google Sheet is the only persistent store — the bot keeps no local database.
+Go Discord bot that automates the test13 validator onboarding lifecycle: candidate intake, evidence submission, reviewer decisions, the GovDAO handoff, and the on-chain role activation once the validator joins the active set. A Google Sheet is the only persistent store — the bot keeps no local database.
 
 ## Commands
 
@@ -8,12 +8,14 @@ The bot registers these Discord commands (see `internal/handlers`):
 
 - `/candidate` — candidate intake
 - `/submit-request` — evidence submission (one Sheet row per call, including resubmissions)
-- request missing info, ask-to-retry, escalate-to-call, approve — reviewer decisions in `#validator-review`
+- request missing info, ask-to-retry, escalate-to-call, approve — reviewer decisions in `#validator-review`. **Approve does not grant the `Testnet Validator` role**: it only moves the candidate to `GovDAO pending` and forwards them to the GovDAO.
 - `/harvest` and `/harvest-import` — the end-of-window competency pass (reviewers only); needs the privileged Message Content intent. See [docs/harvest.md](docs/harvest.md).
+
+In addition, a background **activation poller** checks the chain's active validator set every `validator_poll_interval` and grants the `Testnet Validator` role (removing the candidate role, advancing the row to `GovDAO approved`, and DMing the candidate) once an approved candidate's validator is admitted to the active set by the GovDAO. The candidate's signing address is derived on the fly from their operator address via the `r/gnops/valopers` realm and matched against the node's `validators` RPC — no extra Sheet column is stored.
 
 ## Setup
 
-1. Copy `config.example.yaml` to `config.yaml` and fill in the Discord token, guild/channel/role IDs, GovDAO contact, and Google Sheet ID/name.
+1. Copy `config.example.yaml` to `config.yaml` and fill in the Discord token, guild/channel/role IDs, GovDAO contact, Google Sheet ID/name, and the gno RPC endpoint. `validator_poll_interval` (Go duration, e.g. `"5m"`) is optional and defaults to 5 minutes — it sets how often the activation poller checks the chain's active validator set.
 2. Place a Google service account key at `service-account.json` (path configurable via `google_credentials_file`).
 3. Edit `templates.yaml` to adjust candidate/reviewer-facing wording — it's loaded at startup, no rebuild needed, but the bot must be restarted to pick up changes.
 
@@ -48,7 +50,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
      | Send Messages | post in `#validator-review`, DM fallback messages |
      | Embed Links | the `/submit-request` notification in `#validator-review` is an embed ([internal/notify](internal/notify)) |
      | Read Message History | resolve the submission embed targeted by the reviewer context-menu commands |
-     | Manage Roles | grant/revoke `candidate_role_id` and `validator_role_id` on intake/approval |
+     | Manage Roles | grant `candidate_role_id` on intake; grant `validator_role_id` and remove the candidate role when the validator joins the active set (the activation poller) |
 
 4. Copy the **install link** shown at the top of that page, open it in a browser, and explicitly pick the target server from the dropdown — easy to authorize into the wrong server if you manage several.
 5. Confirm the bot actually joined: open the server's member list and look for the username from step 2.
@@ -83,7 +85,8 @@ go run . -config config.yaml
 - `internal/rowref` — encodes a Sheet row number + Discord candidate ID into short strings threaded through embed footers and modal `custom_id`s.
 - `internal/sheet` — the Sheet schema (15 intake columns A-O plus the harvest assessment columns P-AA) and the Google Sheets API client.
 - `internal/notify` — builds/parses the `#validator-review` notification embed.
-- `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks).
+- `internal/valoper` — reads validator profiles from the on-chain `r/gnops/valopers` realm (to auto-fill `/submit-request` and to derive a candidate's signing address) and the active validator set from the node's `validators` RPC.
+- `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks), and the background activation poller (`activation_poller.go`) that grants the validator role on on-chain admission.
 
 ## Testing
 

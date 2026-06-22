@@ -164,6 +164,10 @@ func (f *fakeAPI) FreezeHeaderRow(ctx context.Context, spreadsheetID, sheetName 
 	return f.freezeErr
 }
 
+func (f *fakeAPI) CellLink(ctx context.Context, spreadsheetID, sheetName string, row, col int) (string, error) {
+	return "", nil
+}
+
 func TestParseRowNumber(t *testing.T) {
 	cases := []struct {
 		in      string
@@ -365,16 +369,16 @@ func TestEnsureApprovedView_WritesHeadersAndFormula(t *testing.T) {
 	if strings.Contains(api.setFormulaFormula, "IFS(") || strings.Contains(api.setFormulaFormula, "VSTACK(") {
 		t.Errorf("formula must not use IFS/VSTACK (they can't spill arrays): %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "GovDAO submitted") || !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
+	if !strings.Contains(api.setFormulaFormula, "GovDAO approved") || !strings.Contains(api.setFormulaFormula, "GovDAO pending") {
 		t.Errorf("formula missing a GovDAO status: %s", api.setFormulaFormula)
 	}
-	if !strings.Contains(api.setFormulaFormula, "order by") {
-		t.Errorf("formula missing 'order by' (submitted above pending): %s", api.setFormulaFormula)
+	if !strings.Contains(api.setFormulaFormula, "order by") || !strings.Contains(api.setFormulaFormula, "asc") {
+		t.Errorf("formula missing ascending 'order by' (approved above pending): %s", api.setFormulaFormula)
 	}
-	subIdx := strings.Index(api.setFormulaFormula, "GovDAO submitted")
+	appIdx := strings.Index(api.setFormulaFormula, "GovDAO approved")
 	penIdx := strings.Index(api.setFormulaFormula, "GovDAO pending")
-	if subIdx < 0 || penIdx < 0 || subIdx >= penIdx {
-		t.Errorf("submitted must appear before pending: %s", api.setFormulaFormula)
+	if appIdx < 0 || penIdx < 0 || appIdx >= penIdx {
+		t.Errorf("approved must appear before pending: %s", api.setFormulaFormula)
 	}
 	// QUERY must pass headers=0 so it never lifts the first data row into a header.
 	if !strings.Contains(api.setFormulaFormula, ", 0)") {
@@ -486,14 +490,14 @@ func TestEnsure_SkipsHeadersWhenPresent(t *testing.T) {
 
 func TestUpdateFields_Error(t *testing.T) {
 	api := &fakeAPI{updateErr: context.DeadlineExceeded}
-	err := UpdateFields(context.Background(), api, "sheet-id", "Sheet1", 1, map[Column]string{ColumnStatus: StatusApproved})
+	err := UpdateFields(context.Background(), api, "sheet-id", "Sheet1", 1, map[Column]string{ColumnStatus: StatusGovDAOApproved})
 	if err == nil {
 		t.Fatal("expected error")
 	}
 }
 
 func TestIsValidated(t *testing.T) {
-	for _, s := range []string{StatusApproved, StatusGovDAOPending, StatusGovDAOSubmitted, " approved ", "GOVDAO SUBMITTED"} {
+	for _, s := range []string{StatusGovDAOPending, StatusGovDAOApproved, " govdao approved ", "GOVDAO PENDING"} {
 		if !IsValidated(s) {
 			t.Errorf("IsValidated(%q) = false, want true", s)
 		}
@@ -511,7 +515,7 @@ func TestIsReopenable(t *testing.T) {
 			t.Errorf("IsReopenable(%q) = false, want true", s)
 		}
 	}
-	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusApproved, StatusGovDAOPending, "", "rejected"} {
+	for _, s := range []string{StatusCandidate, StatusChallengeInProgress, StatusGovDAOApproved, StatusGovDAOPending, "", "rejected"} {
 		if IsReopenable(s) {
 			t.Errorf("IsReopenable(%q) = true, want false", s)
 		}
@@ -680,6 +684,54 @@ func hasUpdateRow(api *fakeAPI, rangeA1 string) bool {
 		}
 	}
 	return false
+}
+
+func TestReadStatus(t *testing.T) {
+	api := &fakeAPI{getResult: [][]interface{}{{"GovDAO pending"}}}
+	got, err := ReadStatus(context.Background(), api, "sheet-id", "Sheet1", 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "GovDAO pending" {
+		t.Errorf("ReadStatus = %q, want %q", got, "GovDAO pending")
+	}
+
+	empty := &fakeAPI{getResult: nil}
+	if got, err := ReadStatus(context.Background(), empty, "sheet-id", "Sheet1", 7); err != nil || got != "" {
+		t.Errorf("empty cell: got (%q, %v), want (\"\", nil)", got, err)
+	}
+
+	failing := &fakeAPI{getErr: context.DeadlineExceeded}
+	if _, err := ReadStatus(context.Background(), failing, "sheet-id", "Sheet1", 7); err == nil {
+		t.Fatal("expected error when Get fails")
+	}
+}
+
+func TestDiscordIDFromUserURL(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"https://discord.com/users/123456789012345678", "123456789012345678", true},     // 18-digit snowflake
+		{"https://discord.com/users/12345678901234567", "12345678901234567", true},       // 17 digits (min)
+		{"https://discord.com/users/12345678901234567890", "12345678901234567890", true}, // 20 digits (max)
+		{"https://discord.com/users/1234567890123456", "", false},                        // 16 digits — too short
+		{"https://discord.com/users/123456789012345678901", "", false},                   // 21 digits — too long
+		{"https://discord.com/users/123456789", "", false},                               // 9 digits — too short
+		{"https://discord.com/users/@everyone", "", false},                               // non-numeric
+		{"https://discord.com/users/abc", "", false},                                     // non-numeric
+		{"https://discord.com/users/", "", false},
+		{"https://example.com/users/123456789012345678", "", false},   // wrong host
+		{"https://discord.com/users/123456789012345678/x", "", false}, // trailing path
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := DiscordIDFromUserURL(tt.in)
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("DiscordIDFromUserURL(%q) = (%q, %v), want (%q, %v)", tt.in, got, ok, tt.want, tt.ok)
+		}
+	}
 }
 
 func TestColumnLetters_ArchitectureAndBackup(t *testing.T) {

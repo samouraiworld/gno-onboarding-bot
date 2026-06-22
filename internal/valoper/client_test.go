@@ -67,3 +67,45 @@ func TestClientRender_RPCError(t *testing.T) {
 		t.Fatal("expected error on rpc-level error")
 	}
 }
+
+func TestClientValidatorSet_Success(t *testing.T) {
+	body := `{"jsonrpc":"2.0","id":1,"result":{"block_height":"1","validators":[` +
+		`{"address":"g1aaa"},{"address":"g1bbb"}]}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string `json:"method"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.Method != "validators" {
+			t.Errorf("method = %q, want validators", req.Method)
+		}
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	set, err := NewClient(srv.URL).ValidatorSet(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(set) != 2 {
+		t.Fatalf("len = %d, want 2", len(set))
+	}
+	if _, ok := set["g1aaa"]; !ok {
+		t.Errorf("g1aaa missing")
+	}
+	if _, ok := set["g1bbb"]; !ok {
+		t.Errorf("g1bbb missing")
+	}
+}
+
+func TestClientValidatorSet_RPCError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"message":"boom"}}`))
+	}))
+	defer srv.Close()
+	if _, err := NewClient(srv.URL).ValidatorSet(context.Background()); err == nil {
+		t.Fatal("expected error on rpc-level error")
+	}
+}

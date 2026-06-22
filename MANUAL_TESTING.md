@@ -38,7 +38,7 @@ The bot does not do this itself (Discord rejects bot tokens on the permissions e
 - [ ] `Request missing info` (right-click the notification in `#validator-review`): modal collects a multi-line list; submitting it DMs the candidate the exact "Request missing information" wording with the submitted items as bullets, and updates the Sheet row's `Status` (`Needs retry`), `Missing criteria`, `Decision date`, `Reviewers`.
 - [ ] `Ask to retry`: same shape, with the exact "Ask a candidate to retry" wording and two modal fields.
 - [ ] `Escalate to call`: same shape, with the exact "Escalate an unclear result to a technical call" wording; confirm the Sheet's `Status` is unchanged and only `Reviewers` is updated.
-- [ ] `Approve`: no modal; DMs the candidate the exact "Approve a candidate" wording, grants `Testnet Validator`, removes `Testnet Validator Candidate`, sets the Sheet row's `Status` to `GovDAO pending`, and posts a message in `#validator-review` tagging the configured GovDAO contact with the candidate's Valoper link.
+- [ ] `Approve`: no modal; DMs the candidate the exact "Approve a candidate" wording, sets the Sheet row's `Status` to `GovDAO pending`, and posts a message in `#validator-review` tagging the configured GovDAO contact with the candidate's Valoper link. **No role change** at this step — the `Testnet Validator` role is granted later by the activation poller (see the "GovDAO on-chain role activation" section below).
 - [ ] None of the four reviewer commands are visible/usable by a member without the `Onboarding Reviewer` role, or outside `#validator-review`.
 - [ ] Resubmission: after `Needs retry`, running `/submit-request` again appends a brand-new Sheet row (the first row is left untouched) and posts a new notification referencing the new row.
 - [ ] Closed DMs: temporarily block DMs from server members on a test account, then run `/candidate-testnet` and `/submit-request` as that account — confirm the ephemeral fallback shows the full message text. Then have a reviewer run `Approve` against that candidate — confirm the reviewer sees the "could not DM the candidate" fallback ephemeral message instead.
@@ -55,7 +55,17 @@ Prereq: enable the privileged **Message Content** intent and give the bot **Read
 - [ ] Redaction: the seeded secret shows as `[REDACTED:...]` in `harvest.json` and the evidence tab; the Red flags cell names the kind.
 - [ ] Valoper: a candidate with operator address in column K shows `signals.valoper_state: "found"`; one without shows `not_found`.
 - [ ] Duplicate handles: two rows for one `@handle` → only the latest is evaluated; the older reads `Duplicate of row N` with its assessment cells cleared.
-- [ ] Validated rows skipped: set a row's Status to `Approved`/`GovDAO pending`/`GovDAO submitted` → absent from `harvest.json`, columns untouched.
+- [ ] Validated rows skipped: set a row's Status to `GovDAO pending`/`GovDAO approved` → absent from `harvest.json`, columns untouched.
 - [ ] Run the `competency-digest` skill on `harvest.json` → `digest.json`, then `/harvest-import` it: Readiness (P), Summary (Q), criterion checkboxes (R-X), Evidence links (AA) fill; the human columns (A-O) are untouched.
-- [ ] Curation: set a reviewed candidate's Status to `Approved`/`GovDAO pending` → it appears in PR #4's `-approved` tab (no separate Selected column).
+- [ ] Curation: set a reviewed candidate's Status to `GovDAO approved`/`GovDAO pending` → it appears in PR #4's `-approved` tab (no separate Selected column).
 - [ ] `/harvest-import` with a malformed file → ephemeral error, no writes.
+
+## GovDAO on-chain role activation
+
+1. **Approve grants no role.** Run **Approve** on a submission. Expect: tracker row → `GovDAO pending`, candidate DM received, GovDAO contact pinged, and the candidate's roles **unchanged** (still `Testnet Validator Candidate`, no `Testnet Validator`).
+2. **Poller activates on-chain membership.** With a candidate whose valoper's signing address is in `<gno_rpc_endpoint>/validators`, wait one `validator_poll_interval`. Expect: tracker row → `GovDAO approved`, the `Testnet Validator` role granted and `Testnet Validator Candidate` removed, and the `activated` DM received.
+3. **No double-processing.** On the next tick, the now-`GovDAO approved` row is left untouched (no duplicate DM/role calls in the logs).
+4. **Unresolvable Discord ID.** For a `GovDAO pending` row whose column-B cell has no valid `https://discord.com/users/<17-20-digit-id>` hyperlink (e.g. hand-edited to `@everyone`), expect a single log line asking to grant the role manually, and no status change.
+5. **Decline wins the race.** While a candidate's validator is in the active set, set that row's `Status` to `Declined` just before the tick fires. Expect the poller to re-read the status, log "no longer GovDAO pending", and **not** grant the role or overwrite `Declined`.
+6. **Grant failure rolls back.** Force a role-grant failure (e.g. move the bot's role below `Testnet Validator` so `Manage Roles` is rejected). Expect the row to be rolled back from `GovDAO approved` to `GovDAO pending` and retried on the next tick, rather than stranded.
+7. **Crash reconciliation.** Simulate a crash victim: manually set a row to `GovDAO approved` while the candidate still holds only `Testnet Validator Candidate` (no `Testnet Validator`). On the next tick, expect the poller to detect the missing role, grant `Testnet Validator`, remove the candidate role, and DM — and to not re-check that row on subsequent ticks.

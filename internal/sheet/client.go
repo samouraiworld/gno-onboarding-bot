@@ -442,3 +442,36 @@ func (c *GoogleSheetsClient) WriteRows(ctx context.Context, spreadsheetID, range
 	}).ValueInputOption("RAW").Context(ctx).Do()
 	return err
 }
+
+// CellLink returns the hyperlink URI attached to a single cell, or "" if the
+// cell has no link. row is 1-based; col is a 0-based Column index. The link is
+// read from the cell's textFormatRuns (how SetLinkedText writes it) with the
+// cell-level hyperlink field as a fallback.
+func (c *GoogleSheetsClient) CellLink(ctx context.Context, spreadsheetID, sheetName string, row, col int) (string, error) {
+	cell := fmt.Sprintf("%s!%s%d", sheetName, columnLetter(Column(col)), row)
+	resp, err := c.svc.Spreadsheets.Get(spreadsheetID).
+		Ranges(cell).
+		Fields("sheets.data.rowData.values(hyperlink,textFormatRuns.format.link.uri)").
+		IncludeGridData(true).
+		Context(ctx).Do()
+	if err != nil {
+		return "", err
+	}
+	for _, sh := range resp.Sheets {
+		for _, d := range sh.Data {
+			for _, rd := range d.RowData {
+				for _, v := range rd.Values {
+					for _, run := range v.TextFormatRuns {
+						if run.Format != nil && run.Format.Link != nil && run.Format.Link.Uri != "" {
+							return run.Format.Link.Uri, nil
+						}
+					}
+					if v.Hyperlink != "" {
+						return v.Hyperlink, nil
+					}
+				}
+			}
+		}
+	}
+	return "", nil
+}

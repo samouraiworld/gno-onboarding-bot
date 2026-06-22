@@ -15,9 +15,12 @@ request_missing_info: |-
   After fixing it, run `/submit-request` again and provide only the operator address.
 
 approve: |-
-  Congratulations, you passed the onboarding challenge. We assigned you the `Testnet Validator` role.
+  Congratulations, you passed the reviewers' onboarding check. Your application has been forwarded to the GovDAO.
 
-  Next: wait for GovDAO approval and confirmation before treating your validator as active. New external validators start with voting power `1` and may earn more later through a separate, documented process.
+  Next: the GovDAO must admit your validator to the active set. Once your validator appears in the active set, the bot automatically grants you the `Testnet Validator` role and notifies you. New external validators start with voting power `1` and may earn more later through a separate, documented process.
+
+activated: |-
+  Your validator is now in the active set — the GovDAO has admitted it, and the bot has granted you the `Testnet Validator` role. Welcome aboard!
 
 decline: |-
   Thanks for completing the challenge. We cannot approve this application because the following published criteria are not met:

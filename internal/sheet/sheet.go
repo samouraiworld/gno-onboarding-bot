@@ -91,9 +91,8 @@ const (
 	StatusChallengeInProgress = "Challenge in progress"
 	StatusNeedsRetry          = "Needs retry"
 	StatusDeclined            = "Declined"
-	StatusApproved            = "Approved"
 	StatusGovDAOPending       = "GovDAO pending"
-	StatusGovDAOSubmitted     = "GovDAO submitted"
+	StatusGovDAOApproved      = "GovDAO approved"
 )
 
 type CandidateRow struct {
@@ -188,6 +187,7 @@ type API interface {
 	SetCheckbox(ctx context.Context, spreadsheetID, sheetName string, startCol, endCol Column) error
 	ClearValues(ctx context.Context, spreadsheetID, rangeA1 string) error
 	WriteRows(ctx context.Context, spreadsheetID, rangeA1 string, values [][]interface{}) error
+	CellLink(ctx context.Context, spreadsheetID, sheetName string, row, col int) (string, error)
 }
 
 // StatusColors maps each status to a light hex background color used by
@@ -197,9 +197,8 @@ var StatusColors = map[string]string{
 	StatusChallengeInProgress: "#fff2a8",
 	StatusNeedsRetry:          "#fcd5b4",
 	StatusDeclined:            "#f4c7c3",
-	StatusApproved:            "#c2eebc",
 	StatusGovDAOPending:       "#b6d7f5",
-	StatusGovDAOSubmitted:     "#d9c4ec",
+	StatusGovDAOApproved:      "#c2eebc",
 }
 
 // EnsureStatusColors installs the status-row coloring rules on sheetName,
@@ -221,9 +220,8 @@ var AllStatuses = []string{
 	StatusChallengeInProgress,
 	StatusNeedsRetry,
 	StatusDeclined,
-	StatusApproved,
 	StatusGovDAOPending,
-	StatusGovDAOSubmitted,
+	StatusGovDAOApproved,
 }
 
 // EnsureStatusDropdown installs the dropdown on column C, sized to the
@@ -336,8 +334,8 @@ func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheet
 
 // approvedViewFormula builds the spilling array formula for the "-approved"
 // tab: a single QUERY selecting both GovDAO statuses, ordered so "GovDAO
-// submitted" rows sort above "GovDAO pending" rows ("submitted" > "pending",
-// so `order by desc`). IFERROR renders "" when neither category has rows.
+// approved" rows sort above "GovDAO pending" rows ("approved" < "pending",
+// so `order by asc`). IFERROR renders "" when neither category has rows.
 //
 // A single self-spilling QUERY is used deliberately: IFS/VSTACK cannot return a
 // multi-row array from a branch (Sheets raises "IFS range size inconsistent"),
@@ -346,8 +344,8 @@ func EnsureApprovedView(ctx context.Context, api API, spreadsheetID, sourceSheet
 // ("," or ";"); the SQL is a single string literal, so it is locale-independent.
 func approvedViewFormula(sourceSheetName, lastCol, statusCol, sep string) string {
 	src := fmt.Sprintf("'%s'!A2:%s", sourceSheetName, lastCol)
-	sql := fmt.Sprintf(`"select * where %s = '%s' or %s = '%s' order by %s desc"`,
-		statusCol, StatusGovDAOSubmitted, statusCol, StatusGovDAOPending, statusCol)
+	sql := fmt.Sprintf(`"select * where %s = '%s' or %s = '%s' order by %s asc"`,
+		statusCol, StatusGovDAOApproved, statusCol, StatusGovDAOPending, statusCol)
 	return fmt.Sprintf(`=IFERROR(QUERY(%s%s %s%s 0)%s "")`, src, sep, sql, sep, sep)
 }
 
@@ -440,6 +438,43 @@ func FindByOperatorAddress(ctx context.Context, api API, spreadsheetID, sheetNam
 	return 0, "", nil
 }
 
+// DiscordIDFromUserURL extracts the numeric user ID from a Discord profile URL
+// of the form https://discord.com/users/<id>. Returns ok=false for any other
+// shape. The bot persists this URL as the column-B hyperlink at submit time, so
+// the activation poller reads the candidate's Discord ID back from it.
+func DiscordIDFromUserURL(url string) (string, bool) {
+	const prefix = "https://discord.com/users/"
+	if !strings.HasPrefix(url, prefix) {
+		return "", false
+	}
+	id := strings.TrimPrefix(url, prefix)
+	// A Discord snowflake is 17-20 digits. Validating it (rather than accepting
+	// any trailing text) fails closed: a hand-edited cell like ".../users/@everyone"
+	// is rejected instead of being passed to GuildMemberRoleAdd.
+	if !discordSnowflakeRe.MatchString(id) {
+		return "", false
+	}
+	return id, true
+}
+
+var discordSnowflakeRe = regexp.MustCompile(`^\d{17,20}$`)
+
+// ReadStatus reads the Status (column C) cell of a single 1-based row. The
+// activation poller calls it to re-check a row's status immediately before a
+// state transition, so a reviewer decision (e.g. Decline) that landed since the
+// tick's bulk read isn't clobbered. Returns "" when the cell is empty.
+func ReadStatus(ctx context.Context, api API, spreadsheetID, sheetName string, row int) (string, error) {
+	rangeA1 := fmt.Sprintf("%s!%s%d", sheetName, columnLetter(ColumnStatus), row)
+	data, err := api.Get(ctx, spreadsheetID, rangeA1)
+	if err != nil {
+		return "", fmt.Errorf("read status %s: %w", rangeA1, err)
+	}
+	if len(data) == 0 || len(data[0]) == 0 {
+		return "", nil
+	}
+	return strings.TrimSpace(fmt.Sprint(data[0][0])), nil
+}
+
 func UpdateFields(ctx context.Context, api API, spreadsheetID, sheetName string, row int, fields map[Column]string) error {
 	for col, value := range fields {
 		rangeA1 := fmt.Sprintf("%s!%s%d", sheetName, columnLetter(col), row)
@@ -460,7 +495,7 @@ func EvidenceTabName(sourceSheetName string) string { return sourceSheetName + "
 // should be left untouched by the harvest pass. Case- and whitespace-tolerant.
 func IsValidated(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case strings.ToLower(StatusApproved), strings.ToLower(StatusGovDAOPending), strings.ToLower(StatusGovDAOSubmitted):
+	case strings.ToLower(StatusGovDAOPending), strings.ToLower(StatusGovDAOApproved):
 		return true
 	}
 	return false

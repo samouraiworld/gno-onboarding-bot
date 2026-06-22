@@ -43,15 +43,16 @@ func AddressFromInput(s string) (string, error) {
 	return s, nil
 }
 
-// ParseRender extracts the moniker, operator address, and description from a
+// ParseRender extracts the moniker, operator address, signing address, and description from a
 // single-valoper realm render.
-func ParseRender(raw string) (moniker, operatorAddr, description string, err error) {
+func ParseRender(raw string) (moniker, operatorAddr, signingAddr, description string, err error) {
 	raw = strings.ReplaceAll(raw, "\r\n", "\n")
 	if t := strings.TrimSpace(raw); strings.HasPrefix(t, "unknown address") || strings.HasPrefix(t, "invalid address") {
-		return "", "", "", ErrNotRegistered
+		return "", "", "", "", ErrNotRegistered
 	}
 
 	const opMarker = "- Operator Address:"
+	const signMarker = "- Signing Address:"
 	lines := strings.Split(raw, "\n")
 	monikerIdx, opIdx := -1, -1
 	for i, ln := range lines {
@@ -61,17 +62,31 @@ func ParseRender(raw string) (moniker, operatorAddr, description string, err err
 			moniker = strings.TrimSpace(strings.TrimPrefix(t, "## "))
 			continue
 		}
+		// Operator address: take the LAST occurrence. The realm renders the
+		// operator-controlled Description before the canonical fields, so any
+		// "- Operator Address:" an attacker injects there appears earlier than
+		// the real one — the last match is the canonical operator line.
 		if strings.HasPrefix(t, opMarker) {
 			opIdx = i
 			operatorAddr = strings.TrimSpace(strings.TrimPrefix(t, opMarker))
-			break
 		}
 	}
 	if monikerIdx == -1 || opIdx == -1 || moniker == "" || operatorAddr == "" {
-		return "", "", "", ErrUnparseable
+		return "", "", "", "", ErrUnparseable
+	}
+	// Signing address: the first "- Signing Address:" AFTER the canonical operator
+	// line. Everything after that line is realm-generated (not user-controllable),
+	// so a "- Signing Address:" injected into the Description (which renders before
+	// the operator line) cannot spoof the address used to gate role grants.
+	for _, ln := range lines[opIdx+1:] {
+		t := strings.TrimSpace(ln)
+		if strings.HasPrefix(t, signMarker) {
+			signingAddr = strings.TrimSpace(strings.TrimPrefix(t, signMarker))
+			break
+		}
 	}
 	description = strings.TrimSpace(strings.Join(lines[monikerIdx+1:opIdx], "\n"))
-	return moniker, operatorAddr, description, nil
+	return moniker, operatorAddr, signingAddr, description, nil
 }
 
 // ProfileURL builds the gnoweb profile URL for a valoper address.
