@@ -96,3 +96,65 @@ func (c *Client) Render(ctx context.Context, realmPath string) (string, error) {
 	}
 	return string(data), nil
 }
+
+type rpcValidatorsRequest struct {
+	JSONRPC string      `json:"jsonrpc"`
+	ID      int         `json:"id"`
+	Method  string      `json:"method"`
+	Params  interface{} `json:"params"`
+}
+
+type validatorsResponse struct {
+	Result *struct {
+		Validators []struct {
+			Address string `json:"address"`
+		} `json:"validators"`
+	} `json:"result"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// ValidatorSet returns the set of active validator signing addresses reported by
+// the node's `validators` RPC method, for O(1) membership checks. The gno node
+// returns the full set in one call (no pagination).
+func (c *Client) ValidatorSet(ctx context.Context) (map[string]struct{}, error) {
+	reqBody, err := json.Marshal(rpcValidatorsRequest{
+		JSONRPC: "2.0", ID: 1, Method: "validators", Params: struct{}{},
+	})
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("validators request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("validators status %d", resp.StatusCode)
+	}
+
+	var vr validatorsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&vr); err != nil {
+		return nil, fmt.Errorf("decode validators response: %w", err)
+	}
+	if vr.Error != nil {
+		return nil, fmt.Errorf("rpc error: %s", vr.Error.Message)
+	}
+	if vr.Result == nil {
+		return nil, fmt.Errorf("validators response missing result")
+	}
+	set := make(map[string]struct{}, len(vr.Result.Validators))
+	for _, v := range vr.Result.Validators {
+		if v.Address != "" {
+			set[v.Address] = struct{}{}
+		}
+	}
+	return set, nil
+}
