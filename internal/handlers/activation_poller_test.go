@@ -101,8 +101,8 @@ func (f *fakeDiscord) GuildMemberRoleRemove(guildID, userID, roleID string, _ ..
 	return f.removeErr
 }
 
-func (f *fakeDiscord) ChannelMessageSend(channelID, content string, _ ...discordgo.RequestOption) (*discordgo.Message, error) {
-	f.posts = append(f.posts, sentMessage{channelID, content})
+func (f *fakeDiscord) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, _ ...discordgo.RequestOption) (*discordgo.Message, error) {
+	f.posts = append(f.posts, sentMessage{channelID, data.Content})
 	return &discordgo.Message{}, nil
 }
 
@@ -346,7 +346,13 @@ func TestReconcileApproved_GrantsMissingRole(t *testing.T) {
 		t.Errorf("reconcile must grant the missing validator role, added=%v", disc.added)
 	}
 	if len(disc.removed) != 1 || len(disc.posts) != 1 {
-		t.Errorf("reconcile should remove candidate role and post the activation notice, removed=%v posts=%v", disc.removed, disc.posts)
+		t.Fatalf("reconcile should remove candidate role and post the activation notice, removed=%v posts=%v", disc.removed, disc.posts)
+	}
+	if disc.posts[0].channelID != "onb" {
+		t.Errorf("reconcile activation post channel = %q, want onboarding channel %q", disc.posts[0].channelID, "onb")
+	}
+	if !strings.Contains(disc.posts[0].content, "<@"+testCandidateID+">") {
+		t.Errorf("reconcile activation post must ping the candidate, got %q", disc.posts[0].content)
 	}
 	// Second tick: already reconciled, no further grant or member fetch.
 	p.tick(context.Background())

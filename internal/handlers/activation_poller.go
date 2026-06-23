@@ -28,7 +28,7 @@ type discordActions interface {
 	GuildMemberRoleAdd(guildID, userID, roleID string, options ...discordgo.RequestOption) error
 	GuildMemberRoleRemove(guildID, userID, roleID string, options ...discordgo.RequestOption) error
 	GuildMember(guildID, userID string, options ...discordgo.RequestOption) (*discordgo.Member, error)
-	ChannelMessageSend(channelID, content string, options ...discordgo.RequestOption) (*discordgo.Message, error)
+	ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error)
 }
 
 type activationPoller struct {
@@ -181,7 +181,7 @@ func (p *activationPoller) reconcileApproved(ctx context.Context, r sheet.Tracke
 	p.clearWarn(r.Row)
 	if msg, terr := p.tpl.Activated(); terr != nil {
 		p.logf("activation: reconcile row %d render template: %v", r.Row, terr)
-	} else if derr := p.notifyCandidate(candidateID, msg); derr != nil {
+	} else if derr := sendCandidateMessage(p.disc, p.cfg.OnboardingChannelID, candidateID, msg); derr != nil {
 		p.logf("activation: reconcile row %d post activated notice for %s failed: %v", r.Row, candidateID, derr)
 	}
 	p.logf("activation: reconciled stranded row %d user=%s (granted missing validator role)", r.Row, candidateID)
@@ -241,7 +241,7 @@ func (p *activationPoller) activate(ctx context.Context, r sheet.TrackerRow) {
 		p.logf("activation: render activated template (row %d): %v", r.Row, err)
 		return
 	}
-	if err := p.notifyCandidate(candidateID, msg); err != nil {
+	if err := sendCandidateMessage(p.disc, p.cfg.OnboardingChannelID, candidateID, msg); err != nil {
 		p.logf("activation: post activated notice for %s (row %d) failed: %v", candidateID, r.Row, err)
 	}
 	p.logf("activation: OK row %d user=%s moniker=%q", r.Row, candidateID, r.Moniker)
@@ -260,13 +260,4 @@ func (p *activationPoller) warn(row int, reason string, err error) {
 
 func (p *activationPoller) clearWarn(row int) {
 	delete(p.warned, row)
-}
-
-// notifyCandidate posts a candidate-facing message to the onboarding channel and
-// pings the candidate, matching the rest of the bot's no-DM delivery. An
-// activated candidate holds the Validator role, which can read the onboarding
-// channel.
-func (p *activationPoller) notifyCandidate(candidateID, content string) error {
-	_, err := p.disc.ChannelMessageSend(p.cfg.OnboardingChannelID, "<@"+candidateID+">\n"+content)
-	return err
 }
