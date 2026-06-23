@@ -17,6 +17,7 @@ type rawTemplates struct {
 	Decline            string `yaml:"decline"`
 	EscalateToCall     string `yaml:"escalate_to_call"`
 	Activated          string `yaml:"activated"`
+	RoleRemoved        string `yaml:"role_removed"`
 }
 
 type Templates struct {
@@ -27,6 +28,7 @@ type Templates struct {
 	decline            *template.Template
 	escalateToCall     *template.Template
 	activated          *template.Template
+	roleRemoved        *template.Template
 }
 
 func Load(path string) (*Templates, error) {
@@ -52,6 +54,7 @@ func Load(path string) (*Templates, error) {
 		{"decline", raw.Decline, &t.decline},
 		{"escalate_to_call", raw.EscalateToCall, &t.escalateToCall},
 		{"activated", raw.Activated, &t.activated},
+		{"role_removed", raw.RoleRemoved, &t.roleRemoved},
 	}
 	for _, e := range entries {
 		parsed, err := template.New(e.name).Parse(e.text)
@@ -97,4 +100,8 @@ func (t *Templates) EscalateToCall(topic, options, scope string) (string, error)
 
 func (t *Templates) Activated() (string, error) {
 	return render(t.activated, nil)
+}
+
+func (t *Templates) RoleRemoved(name, announcementLink string) (string, error) {
+	return render(t.roleRemoved, struct{ Name, AnnouncementLink string }{name, announcementLink})
 }

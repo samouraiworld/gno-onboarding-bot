@@ -69,3 +69,12 @@ Prereq: enable the privileged **Message Content** intent and give the bot **Read
 5. **Decline wins the race.** While a candidate's validator is in the active set, set that row's `Status` to `Declined` just before the tick fires. Expect the poller to re-read the status, log "no longer GovDAO pending", and **not** grant the role or overwrite `Declined`.
 6. **Grant failure rolls back.** Force a role-grant failure (e.g. move the bot's role below `Testnet Validator` so `Manage Roles` is rejected). Expect the row to be rolled back from `GovDAO approved` to `GovDAO pending` and retried on the next tick, rather than stranded.
 7. **Crash reconciliation.** Simulate a crash victim: manually set a row to `GovDAO approved` while the candidate still holds only `Testnet Validator Candidate` (no `Testnet Validator`). On the next tick, expect the poller to detect the missing role, grant `Testnet Validator`, remove the candidate role, and DM — and to not re-check that row on subsequent ticks.
+
+## Bulk validator-role removal
+
+Prereq: enable the privileged **Server Members** intent and give the bot **Manage Roles** with its role positioned above `validator_role_id`. Give two or three test accounts the `Testnet Validator` role; close DMs on one of them.
+
+- [ ] Permission gate: a non-reviewer running `/remove-validator-role` gets the "need the reviewer role" ephemeral error and no role is touched.
+- [ ] Happy path: a reviewer runs `/remove-validator-role announcement-link:<url>`. Every member who held `Testnet Validator` loses it, each receives the `role_removed` DM (with their name and the link), and the reviewer sees an ephemeral summary count.
+- [ ] Members without the role (and bots) are untouched.
+- [ ] Closed-DM fallback: the account with DMs closed still loses the role; the reviewer's summary lists that member and includes the full message text to relay manually.

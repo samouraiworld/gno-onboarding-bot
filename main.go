@@ -69,7 +69,8 @@ func main() {
 		log.Fatalf("create discord session: %v", err)
 	}
 	// GuildMessages + MessageContent (privileged) let /harvest read channel history.
-	s.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
+	// GuildMembers (privileged) lets /remove-validator-role enumerate all members.
+	s.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuildMembers
 
 	ready := make(chan struct{})
 	s.AddHandlerOnce(func(s *discordgo.Session, r *discordgo.Ready) {
@@ -89,6 +90,7 @@ func main() {
 		handlers.RegisterEscalateToCall,
 		handlers.RegisterApprove,
 		handlers.RegisterHarvest,
+		handlers.RegisterRemoveValidatorRole,
 	}
 	for _, register := range registrations {
 		if err := register(s, cfg, sheetsClient, tpl); err != nil {

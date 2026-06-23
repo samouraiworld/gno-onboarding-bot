@@ -10,6 +10,7 @@ The bot registers these Discord commands (see `internal/handlers`):
 - `/submit-request` — evidence submission (one Sheet row per call, including resubmissions)
 - request missing info, ask-to-retry, escalate-to-call, approve — reviewer decisions in `#validator-review`. **Approve does not grant the `Testnet Validator` role**: it only moves the candidate to `GovDAO pending` and forwards them to the GovDAO.
 - `/harvest` and `/harvest-import` — the end-of-window competency pass (reviewers only); needs the privileged Message Content intent. See [docs/harvest.md](docs/harvest.md).
+- `/remove-validator-role` — bulk removes the `Testnet Validator` role from **every** member who has it and DMs each of them the onboarding-reset notice (reviewers only). Takes a required `announcement-link` option, included in the DM. Needs the privileged Server Members intent and the `Manage Roles` permission.
 
 In addition, a background **activation poller** checks the chain's active validator set every `validator_poll_interval` and grants the `Testnet Validator` role (removing the candidate role, advancing the row to `GovDAO approved`, and DMing the candidate) once an approved candidate's validator is admitted to the active set by the GovDAO. The candidate's signing address is derived on the fly from their operator address via the `r/gnops/valopers` realm and matched against the node's `validators` RPC — no extra Sheet column is stored.
 
@@ -38,7 +39,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
 ### Discord application setup
 
 1. Create the application at the [Discord Developer Portal](https://discord.com/developers/applications).
-2. **Bot** tab (left menu) → note the bot's **Username**. This is what shows up in the server's member list — it can differ from the application's display name, so don't search the member list for the application name.
+2. **Bot** tab (left menu) → note the bot's **Username**. This is what shows up in the server's member list — it can differ from the application's display name, so don't search the member list for the application name. Under *Privileged Gateway Intents* on this tab, enable **Message Content** (required by `/harvest`) and **Server Members** (required by `/remove-validator-role` to enumerate every member that holds the validator role).
 3. **Installation** tab → under *Default Install Settings*:
    - keep **Installation pour une guilde** (Guild Install) checked
    - Scopes: add both `bot` and `applications.commands` — the latter is required for the slash and message-context commands to register
@@ -50,7 +51,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
      | Send Messages | post in `#validator-review`, DM fallback messages |
      | Embed Links | the `/submit-request` notification in `#validator-review` is an embed ([internal/notify](internal/notify)) |
      | Read Message History | resolve the submission embed targeted by the reviewer context-menu commands |
-     | Manage Roles | grant `candidate_role_id` on intake; grant `validator_role_id` and remove the candidate role when the validator joins the active set (the activation poller) |
+     | Manage Roles | grant `candidate_role_id` on intake; grant `validator_role_id` and remove the candidate role when the validator joins the active set (the activation poller); bulk-remove `validator_role_id` via `/remove-validator-role` |
 
 4. Copy the **install link** shown at the top of that page, open it in a browser, and explicitly pick the target server from the dropdown — easy to authorize into the wrong server if you manage several.
 5. Confirm the bot actually joined: open the server's member list and look for the username from step 2.
@@ -66,6 +67,7 @@ The bot does **not** restrict commands programmatically — Discord's command-pe
    - `candidate-testnet` → role: none (anyone), channel: `general_chat_channel_id` only
    - `submit-request` → role: `candidate_role_id`, channel: `onboarding_channel_id` only
    - `Request missing info`, `Ask to retry`, `Escalate to call`, `Approve` (message context commands) → role: `reviewer_role_id`, channel: `validator_review_channel_id` only
+   - `remove-validator-role` → role: `reviewer_role_id`
 
 ## Build & run
 

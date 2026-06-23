@@ -34,3 +34,8 @@ decline: |-
 
 escalate_to_call: |-
   Thanks for the submission. Before we decide, we need to clarify `{{.Topic}}`. Can you join a short technical call at one of these times: `{{.Options}}`? It will focus on `{{.Scope}}`.
+
+role_removed: |-
+  Hi `{{.Name}}`, thanks for validating on the testnet so far. Your `Testnet Validator` role was removed as part of the onboarding reset announced here: `{{.AnnouncementLink}}`.
+
+  Please stay tuned for the new candidate announcement. It will explain how to apply for the Test13 validator set through the new onboarding process.

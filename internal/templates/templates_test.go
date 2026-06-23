@@ -94,6 +94,18 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 			t.Errorf("EscalateToCall() = %q, want %q", got, want)
 		}
 	})
+
+	t.Run("RoleRemoved", func(t *testing.T) {
+		want := "Hi `alice`, thanks for validating on the testnet so far. Your `Testnet Validator` role was removed as part of the onboarding reset announced here: `https://discord.com/announcement`.\n\n" +
+			"Please stay tuned for the new candidate announcement. It will explain how to apply for the Test13 validator set through the new onboarding process."
+		got, err := tpl.RoleRemoved("alice", "https://discord.com/announcement")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != want {
+			t.Errorf("RoleRemoved() = %q, want %q", got, want)
+		}
+	})
 }
 
 func TestLoad_FileNotFound(t *testing.T) {
