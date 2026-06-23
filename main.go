@@ -69,8 +69,12 @@ func main() {
 		log.Fatalf("create discord session: %v", err)
 	}
 	// GuildMessages + MessageContent (privileged) let /harvest read channel history.
-	// GuildMembers (privileged) lets /remove-validator-role enumerate all members.
-	s.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent | discordgo.IntentsGuildMembers
+	// We intentionally do NOT request the GuildMembers gateway intent here:
+	// /remove-validator-role lists members over REST, which only needs the
+	// Server Members privileged intent toggled in the Developer Portal. Keeping
+	// it out of Identify means a missing toggle fails just that one command
+	// (handled gracefully) instead of blocking the whole bot from connecting.
+	s.Identify.Intents = discordgo.IntentsGuilds | discordgo.IntentsGuildMessages | discordgo.IntentsMessageContent
 
 	ready := make(chan struct{})
 	s.AddHandlerOnce(func(s *discordgo.Session, r *discordgo.Ready) {

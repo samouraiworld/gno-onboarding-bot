@@ -39,7 +39,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
 ### Discord application setup
 
 1. Create the application at the [Discord Developer Portal](https://discord.com/developers/applications).
-2. **Bot** tab (left menu) → note the bot's **Username**. This is what shows up in the server's member list — it can differ from the application's display name, so don't search the member list for the application name. Under *Privileged Gateway Intents* on this tab, enable **Message Content** (required by `/harvest`) and **Server Members** (required by `/remove-validator-role` to enumerate every member that holds the validator role).
+2. **Bot** tab (left menu) → note the bot's **Username**. This is what shows up in the server's member list — it can differ from the application's display name, so don't search the member list for the application name. Under *Privileged Gateway Intents* on this tab, enable **Message Content** (required by `/harvest`) and **Server Members** (required by `/remove-validator-role` to enumerate every member that holds the validator role — without it that one command replies with an error telling the admin to enable the intent; the rest of the bot still runs).
 3. **Installation** tab → under *Default Install Settings*:
    - keep **Installation pour une guilde** (Guild Install) checked
    - Scopes: add both `bot` and `applications.commands` — the latter is required for the slash and message-context commands to register

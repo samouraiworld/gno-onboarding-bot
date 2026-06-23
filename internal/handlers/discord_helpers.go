@@ -59,6 +59,19 @@ func editEphemeral(s *discordgo.Session, i *discordgo.Interaction, content strin
 	}
 }
 
+// editEphemeralNoMentions is editEphemeral for content that interpolates
+// untrusted text (e.g. member-controlled display names). A zero-value
+// MessageAllowedMentions disables all mention parsing, so a nickname like
+// "@everyone" or "<@&role>" cannot ping anyone.
+func editEphemeralNoMentions(s *discordgo.Session, i *discordgo.Interaction, content string) {
+	if _, err := s.InteractionResponseEdit(i, &discordgo.WebhookEdit{
+		Content:         &content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{},
+	}); err != nil {
+		log.Printf("editEphemeralNoMentions: failed to edit interaction response for interaction %s (it was NOT delivered): %v", i.ID, err)
+	}
+}
+
 func respondError(s *discordgo.Session, i *discordgo.Interaction, content string) {
 	if err := s.InteractionRespond(i, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,

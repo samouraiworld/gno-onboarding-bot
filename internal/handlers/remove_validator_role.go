@@ -61,7 +61,7 @@ func handleRemoveValidatorRole(s *discordgo.Session, i *discordgo.InteractionCre
 	members, err := allGuildMembers(s, cfg.GuildID)
 	if err != nil {
 		log.Printf("remove-validator-role: list guild members: %v", err)
-		editEphemeral(s, i.Interaction, "Could not list the server members. Please try again.")
+		editEphemeral(s, i.Interaction, "Could not list the server members. Make sure the bot's **Server Members** privileged intent is enabled in the Discord Developer Portal, then try again.")
 		return
 	}
 
@@ -104,7 +104,9 @@ func handleRemoveValidatorRole(s *discordgo.Session, i *discordgo.InteractionCre
 		message, _ := tpl.RoleRemoved("[their name]", announcementLink)
 		fmt.Fprintf(&b, "\n\nRole removed but the DM failed for %d member(s) (DMs may be closed) — please relay this manually:\n- %s\n\nMessage:\n%s", len(dmFailures), strings.Join(dmFailures, "\n- "), message)
 	}
-	editEphemeral(s, i.Interaction, b.String())
+	// The summary interpolates member-controlled display names; disable mention
+	// parsing so a nickname like "@everyone" cannot ping from this reply.
+	editEphemeralNoMentions(s, i.Interaction, b.String())
 }
 
 // allGuildMembers pages through the whole guild membership.
