@@ -10,21 +10,17 @@ import (
 )
 
 type rawTemplates struct {
-	Welcome            string `yaml:"welcome"`
-	Acknowledge        string `yaml:"acknowledge"`
-	RequestMissingInfo string `yaml:"request_missing_info"`
-	Approve            string `yaml:"approve"`
-	Decline            string `yaml:"decline"`
-	EscalateToCall     string `yaml:"escalate_to_call"`
+	Welcome     string `yaml:"welcome"`
+	Acknowledge string `yaml:"acknowledge"`
+	Approve     string `yaml:"approve"`
+	Decline     string `yaml:"decline"`
 }
 
 type Templates struct {
-	welcome            *template.Template
-	acknowledge        *template.Template
-	requestMissingInfo *template.Template
-	approve            *template.Template
-	decline            *template.Template
-	escalateToCall     *template.Template
+	welcome     *template.Template
+	acknowledge *template.Template
+	approve     *template.Template
+	decline     *template.Template
 }
 
 func Load(path string) (*Templates, error) {
@@ -45,10 +41,8 @@ func Load(path string) (*Templates, error) {
 	}{
 		{"welcome", raw.Welcome, &t.welcome},
 		{"acknowledge", raw.Acknowledge, &t.acknowledge},
-		{"request_missing_info", raw.RequestMissingInfo, &t.requestMissingInfo},
 		{"approve", raw.Approve, &t.approve},
 		{"decline", raw.Decline, &t.decline},
-		{"escalate_to_call", raw.EscalateToCall, &t.escalateToCall},
 	}
 	for _, e := range entries {
 		parsed, err := template.New(e.name).Parse(e.text)
@@ -76,18 +70,10 @@ func (t *Templates) Acknowledge() (string, error) {
 	return render(t.acknowledge, nil)
 }
 
-func (t *Templates) RequestMissingInfo(items []string) (string, error) {
-	return render(t.requestMissingInfo, struct{ Items []string }{items})
-}
-
 func (t *Templates) Approve() (string, error) {
 	return render(t.approve, nil)
 }
 
 func (t *Templates) Decline(criteria []string) (string, error) {
 	return render(t.decline, struct{ Criteria []string }{criteria})
-}
-
-func (t *Templates) EscalateToCall(topic, options, scope string) (string, error) {
-	return render(t.escalateToCall, struct{ Topic, Options, Scope string }{topic, options, scope})
 }

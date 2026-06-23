@@ -34,19 +34,6 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 		}
 	})
 
-	t.Run("RequestMissingInfo", func(t *testing.T) {
-		want := "Thanks. Before we can finish the review, please correct:\n\n" +
-			"- `Sync evidence`\n- `Valoper link`\n\n" +
-			"After fixing it, run `/submit-request` again and provide only the operator address."
-		got, err := tpl.RequestMissingInfo([]string{"Sync evidence", "Valoper link"})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if got != want {
-			t.Errorf("RequestMissingInfo() = %q, want %q", got, want)
-		}
-	})
-
 	t.Run("Approve", func(t *testing.T) {
 		want := "Congratulations, you passed the onboarding challenge. We assigned you the `Testnet Validator` role.\n\n" +
 			"Next: wait for GovDAO approval and confirmation before treating your validator as active. New external validators start with voting power `1` and may earn more later through a separate, documented process."
@@ -70,17 +57,6 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("Decline() = %q, want %q", got, want)
-		}
-	})
-
-	t.Run("EscalateToCall", func(t *testing.T) {
-		want := "Thanks for the submission. Before we decide, we need to clarify `sync status`. Can you join a short technical call at one of these times: `Tue 10:00 UTC, Wed 15:00 UTC`? It will focus on `sync status`."
-		got, err := tpl.EscalateToCall("sync status", "Tue 10:00 UTC, Wed 15:00 UTC", "sync status")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if got != want {
-			t.Errorf("EscalateToCall() = %q, want %q", got, want)
 		}
 	})
 }

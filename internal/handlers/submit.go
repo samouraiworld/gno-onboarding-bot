@@ -183,9 +183,9 @@ func finalizeSubmit(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *c
 		editEphemeral(s, i.Interaction, "Submission received, but the acknowledgement template failed to render. Please contact a team member.")
 		return
 	}
-	if err := sendDM(s, candidateID, ack); err != nil {
+	if err := sendCandidateMessage(s, cfg.OnboardingChannelID, candidateID, ack); err != nil {
 		editEphemeral(s, i.Interaction, ack)
 		return
 	}
-	editEphemeral(s, i.Interaction, "Submission received! Check your DMs for confirmation.")
+	editEphemeral(s, i.Interaction, "Submission received! Confirmation posted in the onboarding channel.")
 }

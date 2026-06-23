@@ -55,9 +55,9 @@ func handleCandidateTestnet(s *discordgo.Session, i *discordgo.InteractionCreate
 		editEphemeral(s, i.Interaction, "Role assigned, but the welcome message template failed to render. Please contact a team member.")
 		return
 	}
-	if err := sendDM(s, member.User.ID, welcome); err != nil {
+	if err := sendCandidateMessage(s, cfg.OnboardingChannelID, member.User.ID, welcome); err != nil {
 		editEphemeral(s, i.Interaction, welcome)
 		return
 	}
-	editEphemeral(s, i.Interaction, "Welcome message sent! Check your DMs.")
+	editEphemeral(s, i.Interaction, "Welcome posted in the onboarding channel.")
 }

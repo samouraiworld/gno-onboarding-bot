@@ -79,7 +79,7 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 		editEphemeral(s, i.Interaction, "Role updated, but the approval message template failed to render. Please contact a team member.")
 		return
 	}
-	dmFailed := sendDM(s, candidateID, message) != nil
+	postFailed := sendCandidateMessage(s, cfg.OnboardingChannelID, candidateID, message) != nil
 
 	govDAOMessage := fmt.Sprintf("<@%s> please validate this candidate's entry into the active set via GovDAO. Valoper: %s", cfg.GovDAOContactUserID, valoperLink)
 	_, govDAOErr := s.ChannelMessageSendComplex(cfg.ValidatorReviewChannelID, &discordgo.MessageSend{
@@ -88,18 +88,18 @@ func handleApprove(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	})
 	govDAOFailed := govDAOErr != nil
 
-	if !dmFailed && !govDAOFailed {
+	if !postFailed && !govDAOFailed {
 		editEphemeral(s, i.Interaction, "Approved.")
 		return
 	}
 
-	if dmFailed && govDAOFailed {
-		editEphemeral(s, i.Interaction, fmt.Sprintf("Approved, but could not DM the candidate (DMs may be closed) and could not post the GovDAO notification. Please relay this manually and tag them manually:\n\n%s", message))
+	if postFailed && govDAOFailed {
+		editEphemeral(s, i.Interaction, fmt.Sprintf("Approved, but could not post to the onboarding channel and could not post the GovDAO notification. Please relay this manually and tag them manually:\n\n%s", message))
 		return
 	}
 
-	if dmFailed {
-		editEphemeral(s, i.Interaction, fmt.Sprintf("Approved, but could not DM the candidate (DMs may be closed). Please relay this manually:\n\n%s", message))
+	if postFailed {
+		editEphemeral(s, i.Interaction, fmt.Sprintf("Approved, but could not post to the onboarding channel. Please relay this manually:\n\n%s", message))
 		return
 	}
 

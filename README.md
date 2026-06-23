@@ -6,9 +6,9 @@ Go Discord bot that automates the test13 validator onboarding lifecycle: candida
 
 The bot registers these Discord commands (see `internal/handlers`):
 
-- `/candidate` — candidate intake
+- `/candidate-testnet` — candidate intake
 - `/submit-request` — evidence submission (one Sheet row per call, including resubmissions)
-- request missing info, ask-to-retry, escalate-to-call, approve — reviewer decisions in `#validator-review`
+- `Approve`, `Decline` — reviewer message-context decisions; right-click the submission notification in `#validator-review`. Approve notifies the candidate in `#testnet-onboarding`; Decline removes the candidate role and notifies in general chat
 - `/harvest` and `/harvest-import` — the end-of-window competency pass (reviewers only); needs the privileged Message Content intent. See [docs/harvest.md](docs/harvest.md).
 
 ## Setup
@@ -45,7 +45,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
      | Permission | Why |
      | --- | --- |
      | View Channels | read the channels it posts to |
-     | Send Messages | post in `#validator-review`, DM fallback messages |
+     | Send Messages | post in `#validator-review`, `#testnet-onboarding`, and general chat (candidate notifications) |
      | Embed Links | the `/submit-request` notification in `#validator-review` is an embed ([internal/notify](internal/notify)) |
      | Read Message History | resolve the submission embed targeted by the reviewer context-menu commands |
      | Manage Roles | grant/revoke `candidate_role_id` and `validator_role_id` on intake/approval |
@@ -54,6 +54,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
 5. Confirm the bot actually joined: open the server's member list and look for the username from step 2.
 6. **Role hierarchy** — *Server Settings → Roles* → drag the bot's role **above** `candidate_role_id` and `validator_role_id`. Discord silently rejects `Manage Roles` actions (`HTTP 403, 50013 Missing Permissions`) on any role positioned above the bot's own role in the list, even though the bot holds the `Manage Roles` permission.
 7. **Private channel access** — if `validator_review_channel_id` (or any other command-restricted channel) is private, open that channel's own *Permissions* settings and explicitly add the bot's role with View Channel, Send Messages, Embed Links, and Read Message History. A server-wide permission grant doesn't apply to a channel that excludes the bot's role via its own overwrite.
+8. **Candidate-facing channels** — the bot pings the candidate with a channel post instead of DMing. Welcome, acknowledgement, and approval go to `onboarding_channel_id`, which must be readable by **both** the Candidate and Validator roles (Approve posts after swapping the candidate to Validator, so a Candidate-only channel would hide it from the now-Validator). Decline removes the candidate role and posts to `general_chat_channel_id` instead, since the now-roleless candidate keeps access to general but not the onboarding channel. The bot needs Send Messages in both channels.
 
 ### Restricting commands to a channel/role
 
@@ -63,7 +64,7 @@ The bot does **not** restrict commands programmatically — Discord's command-pe
 2. For each command, set **Default Permissions** to disabled, then grant the relevant role:
    - `candidate-testnet` → role: none (anyone), channel: `general_chat_channel_id` only
    - `submit-request` → role: `candidate_role_id`, channel: `onboarding_channel_id` only
-   - `Request missing info`, `Ask to retry`, `Escalate to call`, `Approve` (message context commands) → role: `reviewer_role_id`, channel: `validator_review_channel_id` only
+   - `Approve`, `Decline` (message context commands) → role: `reviewer_role_id`, channel: `validator_review_channel_id` only
 
 ## Build & run
 
@@ -83,10 +84,10 @@ go run . -config config.yaml
 - `internal/rowref` — encodes a Sheet row number + Discord candidate ID into short strings threaded through embed footers and modal `custom_id`s.
 - `internal/sheet` — the Sheet schema (13 intake columns A-M plus the harvest assessment columns N-Y) and the Google Sheets API client.
 - `internal/notify` — builds/parses the `#validator-review` notification embed.
-- `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks).
+- `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, channel-post-with-fallback, role checks).
 
 ## Testing
 
 Pure-logic packages have unit tests (`go test ./...`). Discord-session-dependent handler code has none — it needs a live Discord session and Google Sheet, so it's verified manually via [MANUAL_TESTING.md](MANUAL_TESTING.md) after any change to `internal/handlers`.
 
-See [CLAUDE.md](CLAUDE.md) for the invariants the codebase relies on (Sheet-before-role-mutation ordering, one row per submission, closed-DM fallback).
+See [CLAUDE.md](CLAUDE.md) for the invariants the codebase relies on (Sheet-before-role-mutation ordering, one row per submission, channel-post fallback).

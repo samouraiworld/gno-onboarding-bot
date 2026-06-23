@@ -84,9 +84,7 @@ func main() {
 
 	registrations := []func(*discordgo.Session, *config.Config, sheet.API, *templates.Templates) error{
 		handlers.RegisterCandidate,
-		handlers.RegisterRequestMissingInfo,
 		handlers.RegisterDecline,
-		handlers.RegisterEscalateToCall,
 		handlers.RegisterApprove,
 		handlers.RegisterHarvest,
 	}

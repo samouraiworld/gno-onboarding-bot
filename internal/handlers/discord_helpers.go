@@ -68,11 +68,20 @@ func respondError(s *discordgo.Session, i *discordgo.Interaction, content string
 	}
 }
 
-func sendDM(s *discordgo.Session, userID, content string) error {
-	ch, err := s.UserChannelCreate(userID)
-	if err != nil {
-		return err
-	}
-	_, err = s.ChannelMessageSend(ch.ID, content)
+// sendCandidateMessage posts a candidate-facing message to channelID and pings
+// the candidate. It replaces the old DM delivery: DMs to non-mutual or
+// DM-disabled users are unreliable and can get the bot flagged, and a channel
+// post gives a persistent, re-readable record instead.
+//
+// Callers choose the channel by who can still see it. Welcome, acknowledgement,
+// and approval go to the onboarding channel (readable by the Candidate and
+// Validator roles). Decline goes to general chat: it removes the candidate
+// role, and the now-roleless candidate keeps access to general but not to the
+// onboarding channel.
+func sendCandidateMessage(s *discordgo.Session, channelID, candidateID, content string) error {
+	_, err := s.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content:         "<@" + candidateID + ">\n" + content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{Users: []string{candidateID}},
+	})
 	return err
 }

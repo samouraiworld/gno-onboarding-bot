@@ -61,8 +61,8 @@ func showDeclineModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg 
 		respondError(s, i.Interaction, "This message is not a valid submission notification.")
 		return
 	}
-	err = showModal(s, i.Interaction, rowref.CustomID(actionDecline, row, candidateID), "Decline", []*discordgo.TextInput{
-		{CustomID: "criteria", Label: "Unmet criteria, 1 per line: Criterion: Issue", Style: discordgo.TextInputParagraph, Required: true},
+	err = showModal(s, i.Interaction, rowref.CustomID(actionDecline, row, candidateID), "Decline (posted to candidate)", []*discordgo.TextInput{
+		{CustomID: "criteria", Label: "Unmet criteria, 1 per line: Criterion: Issue", Placeholder: "Posted publicly in general chat. No confidential info.", Style: discordgo.TextInputParagraph, Required: true},
 	})
 	if err != nil {
 		respondError(s, i.Interaction, "Could not open the form. Please try again.")
@@ -109,8 +109,12 @@ func finalizeDecline(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *
 		return
 	}
 
-	if err := sendDM(s, candidateID, message); err != nil {
-		editEphemeral(s, i.Interaction, fmt.Sprintf("Saved, but could not DM the candidate (DMs may be closed). Please relay this manually:\n\n%s", message))
+	// Decline posts to general chat, not the onboarding channel. Removing the
+	// candidate role revokes onboarding access, but general stays visible to the
+	// now-roleless candidate. The modal warns reviewers to keep the text free of
+	// confidential info, since general is public.
+	if err := sendCandidateMessage(s, cfg.GeneralChatChannelID, candidateID, message); err != nil {
+		editEphemeral(s, i.Interaction, fmt.Sprintf("Saved, but could not post to the general channel. Please relay this manually:\n\n%s", message))
 		return
 	}
 	editEphemeral(s, i.Interaction, "Sent.")
