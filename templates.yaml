@@ -16,8 +16,6 @@ activated: |-
 
 decline: |-
   Your validator application was not approved. Unmet criteria:
-
   {{range $i, $c := .Criteria}}{{if $i}}
   {{end}}- `{{$c}}`{{end}}
-
   Your `Testnet Validator Candidate` role has been removed. To reapply, run `/candidate-testnet` and start again.
