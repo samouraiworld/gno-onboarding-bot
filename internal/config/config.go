@@ -21,6 +21,7 @@ type Config struct {
 	GeneralChatChannelID     string `yaml:"general_chat_channel_id"`
 	OnboardingChannelID      string `yaml:"onboarding_channel_id"`
 	ValidatorReviewChannelID string `yaml:"validator_review_channel_id"`
+	DeclineChannelID         string `yaml:"decline_channel_id"`
 	CandidateRoleID          string `yaml:"candidate_role_id"`
 	ValidatorRoleID          string `yaml:"validator_role_id"`
 	ReviewerRoleID           string `yaml:"reviewer_role_id"`
@@ -87,6 +88,7 @@ func (c Config) validate() error {
 		"general_chat_channel_id":     c.GeneralChatChannelID,
 		"onboarding_channel_id":       c.OnboardingChannelID,
 		"validator_review_channel_id": c.ValidatorReviewChannelID,
+		"decline_channel_id":          c.DeclineChannelID,
 		"candidate_role_id":           c.CandidateRoleID,
 		"validator_role_id":           c.ValidatorRoleID,
 		"reviewer_role_id":            c.ReviewerRoleID,

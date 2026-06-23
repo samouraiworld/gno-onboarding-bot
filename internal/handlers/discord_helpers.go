@@ -90,7 +90,7 @@ type channelPoster interface {
 // /submit-request) reply ephemerally instead and do not use this helper.
 func sendCandidateMessage(poster channelPoster, channelID, candidateID, content string) error {
 	_, err := poster.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Content:         "<@" + candidateID + ">\n" + content,
+		Content:         "<@" + candidateID + "> " + content,
 		AllowedMentions: &discordgo.MessageAllowedMentions{Users: []string{candidateID}},
 	})
 	return err

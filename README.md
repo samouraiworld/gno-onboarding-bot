@@ -8,7 +8,7 @@ The bot registers these Discord commands (see `internal/handlers`):
 
 - `/candidate-testnet` — candidate intake
 - `/submit-request` — evidence submission (one Sheet row per call, including resubmissions)
-- `Approve`, `Decline` — reviewer message-context decisions; right-click the submission notification in `#validator-review`. Approve notifies the candidate in `#testnet-onboarding`; Decline removes the candidate role and notifies in general chat
+- `Approve`, `Decline` — reviewer message-context decisions; right-click the submission notification in `#validator-review`. Approve notifies the candidate in `#testnet-onboarding`; Decline removes the candidate role and notifies in the decline channel
 - `/harvest` and `/harvest-import` — the end-of-window competency pass (reviewers only); needs the privileged Message Content intent. See [docs/harvest.md](docs/harvest.md).
 
 In addition, a background **activation poller** checks the chain's active validator set every `validator_poll_interval` and grants the `Testnet Validator` role (removing the candidate role, advancing the row to `GovDAO approved`, and posting an activation notice in `#testnet-onboarding`) once an approved candidate's validator is admitted to the active set by the GovDAO. The candidate's signing address is derived on the fly from their operator address via the `r/gnops/valopers` realm and matched against the node's `validators` RPC — no extra Sheet column is stored.
@@ -47,7 +47,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
      | Permission | Why |
      | --- | --- |
      | View Channels | read the channels it posts to |
-     | Send Messages | post in `#validator-review`, `#testnet-onboarding`, and general chat (candidate notifications) |
+     | Send Messages | post in `#validator-review`, `#testnet-onboarding`, and the decline channel (candidate notifications) |
      | Embed Links | the `/submit-request` notification in `#validator-review` is an embed ([internal/notify](internal/notify)) |
      | Read Message History | resolve the submission embed targeted by the reviewer context-menu commands |
      | Manage Roles | grant `candidate_role_id` on intake; grant `validator_role_id` and remove the candidate role when the validator joins the active set (the activation poller) |
@@ -56,7 +56,7 @@ The two services below (Google Sheets, Discord) need manual one-time setup beyon
 5. Confirm the bot actually joined: open the server's member list and look for the username from step 2.
 6. **Role hierarchy** — *Server Settings → Roles* → drag the bot's role **above** `candidate_role_id` and `validator_role_id`. Discord silently rejects `Manage Roles` actions (`HTTP 403, 50013 Missing Permissions`) on any role positioned above the bot's own role in the list, even though the bot holds the `Manage Roles` permission.
 7. **Private channel access** — if `validator_review_channel_id` (or any other command-restricted channel) is private, open that channel's own *Permissions* settings and explicitly add the bot's role with View Channel, Send Messages, Embed Links, and Read Message History. A server-wide permission grant doesn't apply to a channel that excludes the bot's role via its own overwrite.
-8. **Candidate-facing channels** — the bot never DMs. Candidate-run commands (`/candidate-testnet`, `/submit-request`) reply ephemerally. Bot-initiated notices ping the candidate via a channel post: approval and the activation notice go to `onboarding_channel_id` (must be readable by **both** the Candidate and Validator roles, since the candidate holds Candidate at approve time and Validator at activation); decline removes the candidate role and posts to `general_chat_channel_id`, since the now-roleless candidate keeps access to general but not onboarding. The bot needs Send Messages in both channels.
+8. **Candidate-facing channels** — the bot never DMs. Candidate-run commands (`/candidate-testnet`, `/submit-request`) reply ephemerally. Bot-initiated notices ping the candidate via a channel post: approval and the activation notice go to `onboarding_channel_id` (must be readable by **both** the Candidate and Validator roles, since the candidate holds Candidate at approve time and Validator at activation); decline removes the candidate role and posts to `decline_channel_id`, which must stay readable by the now-roleless candidate (e.g. visible to @everyone). The bot needs Send Messages in the onboarding and decline channels.
 
 ### Restricting commands to a channel/role
 
