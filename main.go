@@ -99,6 +99,12 @@ func main() {
 		log.Fatalf("register submit command: %v", err)
 	}
 
+	// Discord keeps previously-registered guild commands until they are
+	// explicitly deleted, so a command dropped from the code still appears and
+	// then times out when invoked (no handler). Prune the commands removed in
+	// this version; extend this list when removing more.
+	pruneRemovedCommands(s, cfg.GuildID, "Request missing info", "Escalate to call")
+
 	pollCtx, cancelPoll := context.WithCancel(context.Background())
 	defer cancelPoll()
 	pollDone := handlers.StartActivationPoller(pollCtx, s, cfg, sheetsClient, tpl, renderer, cfg.ValidatorPollEvery)
@@ -110,4 +116,30 @@ func main() {
 	<-stop
 	cancelPoll()
 	<-pollDone
+}
+
+// pruneRemovedCommands deletes the named guild application commands if they are
+// still registered. Discord does not deregister a command just because the bot
+// stops creating it, so commands removed from the code linger in the guild and
+// time out when a user invokes them (no handler remains). Failures are logged,
+// not fatal: a stale command is a nuisance, not a reason to refuse startup.
+func pruneRemovedCommands(s *discordgo.Session, guildID string, names ...string) {
+	remove := make(map[string]bool, len(names))
+	for _, n := range names {
+		remove[n] = true
+	}
+	existing, err := s.ApplicationCommands(s.State.User.ID, guildID)
+	if err != nil {
+		log.Printf("prune removed commands: list guild commands: %v", err)
+		return
+	}
+	for _, c := range existing {
+		if remove[c.Name] {
+			if err := s.ApplicationCommandDelete(s.State.User.ID, guildID, c.ID); err != nil {
+				log.Printf("prune removed command %q: %v", c.Name, err)
+			} else {
+				log.Printf("pruned removed command %q", c.Name)
+			}
+		}
+	}
 }
