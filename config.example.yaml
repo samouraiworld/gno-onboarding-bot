@@ -18,11 +18,6 @@ onboarding_channel_id: ""
 # Right-click #validator-review -> Copy Channel ID.
 validator_review_channel_id: ""
 
-# Channel where decline notices are posted. Decline removes the candidate role,
-# so this channel must stay readable by the now-roleless candidate (e.g. visible
-# to @everyone). Keep it separate from general chat to avoid spamming it.
-decline_channel_id: ""
-
 # Server Settings -> Roles -> role's "..." menu -> Copy Role ID (Testnet Validator Candidate).
 candidate_role_id: ""
 
