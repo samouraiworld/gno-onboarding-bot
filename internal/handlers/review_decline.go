@@ -62,7 +62,7 @@ func showDeclineModal(s *discordgo.Session, i *discordgo.InteractionCreate, cfg 
 		return
 	}
 	err = showModal(s, i.Interaction, rowref.CustomID(actionDecline, row, candidateID), "Decline (posted to candidate)", []*discordgo.TextInput{
-		{CustomID: "criteria", Label: "Unmet criteria, 1 per line: Criterion: Issue", Placeholder: "Posted publicly in the decline channel. No confidential info.", Style: discordgo.TextInputParagraph, Required: true},
+		{CustomID: "criteria", Label: "Unmet criteria, 1 per line: Criterion: Issue", Placeholder: "Posted publicly in the onboarding channel. No confidential info.", Style: discordgo.TextInputParagraph, Required: true},
 	})
 	if err != nil {
 		respondError(s, i.Interaction, "Could not open the form. Please try again.")
@@ -103,18 +103,12 @@ func finalizeDecline(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *
 		return
 	}
 
-	if err := s.GuildMemberRoleRemove(cfg.GuildID, candidateID, cfg.CandidateRoleID); err != nil {
-		log.Printf("decline: remove candidate role for %s: %v", candidateID, err)
-		editEphemeral(s, i.Interaction, fmt.Sprintf("Updated the tracker, but could not remove the Testnet Validator Candidate role. Please remove it manually and relay this to the candidate:\n\n%s", message))
-		return
-	}
-
-	// Decline posts to the dedicated decline channel, not the onboarding channel.
-	// Removing the candidate role revokes onboarding access, but the decline
-	// channel stays visible to the now-roleless candidate. The modal warns
+	// Decline keeps the candidate role, so the candidate retains onboarding
+	// access and can reapply with /submit-request. The decision posts to the
+	// onboarding channel, the same channel approve uses. The modal warns
 	// reviewers to keep the text free of confidential info, since it is public.
-	if err := sendCandidateMessage(s, cfg.DeclineChannelID, candidateID, message); err != nil {
-		editEphemeral(s, i.Interaction, fmt.Sprintf("Saved, but could not post to the decline channel. Please relay this manually:\n\n%s", message))
+	if err := sendCandidateMessage(s, cfg.OnboardingChannelID, candidateID, message); err != nil {
+		editEphemeral(s, i.Interaction, fmt.Sprintf("Saved, but could not post to the onboarding channel. Please relay this manually:\n\n%s", message))
 		return
 	}
 	editEphemeral(s, i.Interaction, "Sent.")

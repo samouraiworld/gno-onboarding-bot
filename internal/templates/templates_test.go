@@ -60,7 +60,7 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 	t.Run("Decline", func(t *testing.T) {
 		want := "Your validator application was not approved. Unmet criteria:\n" +
 			"- `Sync: not synced`\n- `Profile: missing intro`\n" +
-			"Your `Testnet Validator Candidate` role has been removed. To reapply, run `/candidate-testnet` and start again."
+			"Once you have addressed the points above, run `/submit-request` again to reapply."
 		got, err := tpl.Decline([]string{"Sync: not synced", "Profile: missing intro"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

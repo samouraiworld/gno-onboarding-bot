@@ -82,12 +82,12 @@ type channelPoster interface {
 // replaces the old DM delivery, which was unreliable for non-mutual or
 // DM-disabled users and could get the bot flagged.
 //
-// Only bot-initiated notices use this. Approval (review_approve) and the
-// activation notice (the poller) go to the onboarding channel; decline
-// (review_decline) goes to general chat, because it removes the candidate role
-// and a roleless candidate keeps access to general but not onboarding.
-// Candidate-run commands (welcome on /candidate-testnet, acknowledgement on
-// /submit-request) reply ephemerally instead and do not use this helper.
+// Only bot-initiated notices use this. Approval (review_approve), decline
+// (review_decline), and the activation notice (the poller) all go to the
+// onboarding channel; decline keeps the candidate role, so the candidate
+// retains onboarding access either way. Candidate-run commands (welcome on
+// /candidate-testnet, acknowledgement on /submit-request) reply ephemerally
+// instead and do not use this helper.
 func sendCandidateMessage(poster channelPoster, channelID, candidateID, content string) error {
 	_, err := poster.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
 		Content:         "<@" + candidateID + "> " + content,
