@@ -28,8 +28,7 @@ type discordActions interface {
 	GuildMemberRoleAdd(guildID, userID, roleID string, options ...discordgo.RequestOption) error
 	GuildMemberRoleRemove(guildID, userID, roleID string, options ...discordgo.RequestOption) error
 	GuildMember(guildID, userID string, options ...discordgo.RequestOption) (*discordgo.Member, error)
-	UserChannelCreate(recipientID string, options ...discordgo.RequestOption) (*discordgo.Channel, error)
-	ChannelMessageSend(channelID, content string, options ...discordgo.RequestOption) (*discordgo.Message, error)
+	ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error)
 }
 
 type activationPoller struct {
@@ -56,7 +55,8 @@ func newActivationPoller(s *discordgo.Session, cfg *config.Config, api sheet.API
 // StartActivationPoller launches a goroutine that, every `every`, promotes
 // "GovDAO pending" candidates whose validator has joined the active set:
 // it writes "GovDAO approved", grants the Testnet Validator role (removing the
-// Candidate role), and DMs the candidate. Runs until ctx is cancelled. The
+// Candidate role), and posts an activation notice to the onboarding channel.
+// Runs until ctx is cancelled. The
 // returned channel is closed once the goroutine has observed ctx.Done() and
 // exited, so callers can wait for any in-flight tick to finish before
 // tearing down dependencies (e.g. closing the Discord session).
@@ -144,7 +144,8 @@ func (p *activationPoller) promotePending(ctx context.Context, r sheet.TrackerRo
 // role — e.g. a crash between the status write and the role grant, which the
 // pending-only promotion path would never revisit. It checks the candidate's
 // roles at most once per process (memoised in reconciled) and grants the missing
-// role (removing the candidate role and DMing) when it finds none.
+// role (removing the candidate role and posting the activation notice) when it
+// finds none.
 func (p *activationPoller) reconcileApproved(ctx context.Context, r sheet.TrackerRow) {
 	if p.reconciled[r.Row] {
 		return
@@ -180,8 +181,8 @@ func (p *activationPoller) reconcileApproved(ctx context.Context, r sheet.Tracke
 	p.clearWarn(r.Row)
 	if msg, terr := p.tpl.Activated(); terr != nil {
 		p.logf("activation: reconcile row %d render template: %v", r.Row, terr)
-	} else if derr := dmUser(p.disc, candidateID, msg); derr != nil {
-		p.logf("activation: reconcile row %d DM %s failed (DMs may be closed): %v", r.Row, candidateID, derr)
+	} else if derr := sendCandidateMessage(p.disc, p.cfg.OnboardingChannelID, candidateID, msg); derr != nil {
+		p.logf("activation: reconcile row %d post activated notice for %s failed: %v", r.Row, candidateID, derr)
 	}
 	p.logf("activation: reconciled stranded row %d user=%s (granted missing validator role)", r.Row, candidateID)
 }
@@ -240,8 +241,8 @@ func (p *activationPoller) activate(ctx context.Context, r sheet.TrackerRow) {
 		p.logf("activation: render activated template (row %d): %v", r.Row, err)
 		return
 	}
-	if err := dmUser(p.disc, candidateID, msg); err != nil {
-		p.logf("activation: DM candidate %s (row %d) failed (DMs may be closed): %v", candidateID, r.Row, err)
+	if err := sendCandidateMessage(p.disc, p.cfg.OnboardingChannelID, candidateID, msg); err != nil {
+		p.logf("activation: post activated notice for %s (row %d) failed: %v", candidateID, r.Row, err)
 	}
 	p.logf("activation: OK row %d user=%s moniker=%q", r.Row, candidateID, r.Moniker)
 }
@@ -259,13 +260,4 @@ func (p *activationPoller) warn(row int, reason string, err error) {
 
 func (p *activationPoller) clearWarn(row int) {
 	delete(p.warned, row)
-}
-
-func dmUser(d discordActions, userID, content string) error {
-	ch, err := d.UserChannelCreate(userID)
-	if err != nil {
-		return err
-	}
-	_, err = d.ChannelMessageSend(ch.ID, content)
-	return err
 }

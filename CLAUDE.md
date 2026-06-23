@@ -22,7 +22,7 @@ go run . -config config.yaml
 - `internal/notify` — builds/parses the `#validator-review` notification embed.
 - `internal/valoper` — reads validator profiles from the on-chain `r/gnops/valopers` realm (ABCI `vm/qrender`) to auto-fill `/submit-request`.
 - `internal/harvest` — pure logic for the end-of-window pass (attribution, signals, secret redaction, harvest/digest JSON contracts). No Discord or Sheet I/O; fully unit-tested.
-- `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, DM-with-fallback, role checks).
+- `internal/handlers` — the command handlers plus shared Discord glue (defer/edit ephemeral responses, channel-post-with-fallback via `sendCandidateMessage`, role checks).
 - `skills/competency-digest` — the Claude skill that judges `harvest.json` into `digest.json`. See `docs/harvest.md`.
 
 ## Configuration
@@ -37,7 +37,9 @@ Never log the contents of `config.yaml` or `service-account.json`.
 
 - **Sheet write before any Discord role mutation**, in every handler that does both. A Sheets failure must never leave a role changed without a tracker record.
 - **One Sheet row per `/submit-request` call**, including resubmissions after `Needs retry` — never overwrite a previous attempt's row.
-- **Closed-DM fallback**: if a candidate-triggered command's DM fails, fall back to an ephemeral reply with the same real message content (not a generic error). If a reviewer-triggered command's DM fails, tell the reviewer the DM failed so they can relay it manually — still include the real message text.
+- **The bot never DMs.** Candidate-run commands reply ephemerally (welcome on `/candidate-testnet`, acknowledgement on `/submit-request`). Bot-initiated notices post to a channel and ping the candidate (`sendCandidateMessage` in handlers, `notifyCandidate` in the poller): approval and the activation notice go to the onboarding channel (readable by both the Candidate and Validator roles, since the candidate holds Candidate at approve and Validator at activation); decline goes to the dedicated decline channel (`decline_channel_id`), because it removes the candidate role and the now-roleless candidate keeps access to that channel but not onboarding. DMs to non-mutual or DM-disabled users are unreliable and can get the bot flagged.
+- **Decline removes the candidate role**, then posts the reasons to the dedicated decline channel. The decline modal warns the reviewer to keep the text free of confidential info, since that channel is public. A candidate reapplies from scratch with `/candidate-testnet`.
+- **Channel-post fallback**: if a reviewer-triggered post to the candidate fails (approve/decline), tell the reviewer so they can relay it manually, including the real message text. The poller logs its post failures.
 - Command channel/role restriction is **not** done in code. Discord's command-permissions v2 endpoint (`PUT .../commands/{id}/permissions`) rejects bot tokens outright (`20001 Bots cannot use this endpoint`) — it requires an OAuth2 Bearer token from a guild admin, which this bot does not implement. Instead, a server admin configures per-command channel/role restrictions manually via Discord's *Server Settings → Integrations → (bot) → Command permissions* UI, once after each deploy where command IDs change. See the README's "Discord application setup" section.
 - **The harvest writes only its assessment columns (P-AA), never the human cells (A-O).** `/harvest` refreshes Red flags (Y) and Engagement (Z); `/harvest-import` refreshes Readiness (P), Summary (Q), the seven criterion checkboxes (R-X), and Evidence links (AA). Assessment columns refresh each run. Curating good validators is done via the Status column + PR #4's `-approved` view, not a Selected column.
 - **The harvest collapses duplicate handles** (keep latest row per handle via `harvest.NormalizeHandle`, mark older `Duplicate of row N`) and **skips already-validated rows** (`sheet.IsValidated`).
@@ -51,3 +53,5 @@ Pure-logic packages (`config`, `templates`, `forms`, `rowref`, `sheet`, `notify`
 ## Background
 
 This bot's design doc and implementation plan live locally (not committed) under `.claude/docs/superpowers/specs/2026-06-18-discord-onboarding-bot-design.md` and `.claude/docs/superpowers/plans/2026-06-18-discord-onboarding-bot.md`. The project originated inside `gno-validators-onboarding` (which also holds the onboarding process docs, including `Shared.md`, the wording source of truth) and was extracted into this standalone repo with full git history.
+
+The switch from candidate DMs to channel posts (onboarding channel for welcome, acknowledgement, and approval; the decline channel for decline), plus removing the `Request missing info` and `Escalate to call` commands, is specced under `.claude/docs/superpowers/specs/2026-06-23-remove-dm-channel-post-design.md`.

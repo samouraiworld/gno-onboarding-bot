@@ -75,10 +75,12 @@ func (f *fakeSheetAPI) CellLink(ctx context.Context, spreadsheetID, sheetName st
 	return f.link, f.linkErr
 }
 
+type sentMessage struct{ channelID, content string }
+
 type fakeDiscord struct {
 	added     []string // "userID|roleID"
 	removed   []string
-	dms       []string // "content"
+	posts     []sentMessage // candidate-facing channel posts
 	addErr    error
 	removeErr error
 	member    *discordgo.Member
@@ -99,12 +101,8 @@ func (f *fakeDiscord) GuildMemberRoleRemove(guildID, userID, roleID string, _ ..
 	return f.removeErr
 }
 
-func (f *fakeDiscord) UserChannelCreate(recipientID string, _ ...discordgo.RequestOption) (*discordgo.Channel, error) {
-	return &discordgo.Channel{ID: "dm-" + recipientID}, nil
-}
-
-func (f *fakeDiscord) ChannelMessageSend(channelID, content string, _ ...discordgo.RequestOption) (*discordgo.Message, error) {
-	f.dms = append(f.dms, content)
+func (f *fakeDiscord) ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, _ ...discordgo.RequestOption) (*discordgo.Message, error) {
+	f.posts = append(f.posts, sentMessage{channelID, data.Content})
 	return &discordgo.Message{}, nil
 }
 
@@ -145,7 +143,7 @@ func newTestPoller(t *testing.T, api sheet.API, chain chainClient, disc discordA
 		t.Fatalf("load templates: %v", err)
 	}
 	return &activationPoller{
-		cfg:        &config.Config{SheetID: "s", SheetName: "Sheet1", GuildID: "g", ValidatorRoleID: "vrole", CandidateRoleID: "crole"},
+		cfg:        &config.Config{SheetID: "s", SheetName: "Sheet1", GuildID: "g", ValidatorRoleID: "vrole", CandidateRoleID: "crole", OnboardingChannelID: "onb"},
 		api:        api,
 		tpl:        tpl,
 		chain:      chain,
@@ -188,8 +186,14 @@ func TestActivationTick_PromotesActiveValidator(t *testing.T) {
 	if len(disc.removed) != 1 || disc.removed[0] != testCandidateID+"|crole" {
 		t.Errorf("removed = %v, want [%s|crole]", disc.removed, testCandidateID)
 	}
-	if len(disc.dms) != 1 {
-		t.Errorf("dms = %v, want 1 DM", disc.dms)
+	if len(disc.posts) != 1 {
+		t.Fatalf("posts = %v, want 1 onboarding-channel post", disc.posts)
+	}
+	if disc.posts[0].channelID != "onb" {
+		t.Errorf("activated post channel = %q, want onboarding channel %q", disc.posts[0].channelID, "onb")
+	}
+	if !strings.Contains(disc.posts[0].content, "<@"+testCandidateID+">") {
+		t.Errorf("activated post must ping the candidate, got %q", disc.posts[0].content)
 	}
 	if countUpdatesTo(api.updates, sheet.StatusGovDAOApproved) != 1 {
 		t.Errorf("expected one write of %q, updates=%v", sheet.StatusGovDAOApproved, api.updates)
@@ -341,8 +345,14 @@ func TestReconcileApproved_GrantsMissingRole(t *testing.T) {
 	if len(disc.added) != 1 || disc.added[0] != testCandidateID+"|vrole" {
 		t.Errorf("reconcile must grant the missing validator role, added=%v", disc.added)
 	}
-	if len(disc.removed) != 1 || len(disc.dms) != 1 {
-		t.Errorf("reconcile should remove candidate role and DM, removed=%v dms=%v", disc.removed, disc.dms)
+	if len(disc.removed) != 1 || len(disc.posts) != 1 {
+		t.Fatalf("reconcile should remove candidate role and post the activation notice, removed=%v posts=%v", disc.removed, disc.posts)
+	}
+	if disc.posts[0].channelID != "onb" {
+		t.Errorf("reconcile activation post channel = %q, want onboarding channel %q", disc.posts[0].channelID, "onb")
+	}
+	if !strings.Contains(disc.posts[0].content, "<@"+testCandidateID+">") {
+		t.Errorf("reconcile activation post must ping the candidate, got %q", disc.posts[0].content)
 	}
 	// Second tick: already reconciled, no further grant or member fetch.
 	p.tick(context.Background())

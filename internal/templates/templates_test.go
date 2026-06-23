@@ -34,19 +34,6 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 		}
 	})
 
-	t.Run("RequestMissingInfo", func(t *testing.T) {
-		want := "Thanks. Before we can finish the review, please correct:\n\n" +
-			"- `Sync evidence`\n- `Valoper link`\n\n" +
-			"After fixing it, run `/submit-request` again and provide only the operator address."
-		got, err := tpl.RequestMissingInfo([]string{"Sync evidence", "Valoper link"})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if got != want {
-			t.Errorf("RequestMissingInfo() = %q, want %q", got, want)
-		}
-	})
-
 	t.Run("Approve", func(t *testing.T) {
 		want := "Congratulations, you passed the reviewers' onboarding check. Your application has been forwarded to the GovDAO.\n\n" +
 			"Next: the GovDAO must admit your validator to the active set. Once your validator appears in the active set, the bot automatically grants you the `Testnet Validator` role and notifies you. New external validators start with voting power `1` and may earn more later through a separate, documented process."
@@ -71,27 +58,15 @@ func TestLoad_RendersAllMessagesVerbatim(t *testing.T) {
 	})
 
 	t.Run("Decline", func(t *testing.T) {
-		want := "Thanks for completing the challenge. We cannot approve this application because the following published criteria are not met:\n\n" +
-			"- `Sync: not synced`\n- `Profile: missing intro`\n\n" +
-			"The `Testnet Validator Candidate` role will now be removed.\n\n" +
-			"To apply again, restart the process from the beginning: run `/candidate-testnet` in `┋💬ㆍgeneral-chat`, complete every pinned onboarding step, then run `/submit-request` with only the operator address. The new application will be reviewed independently."
+		want := "Your validator application was not approved. Unmet criteria:\n" +
+			"- `Sync: not synced`\n- `Profile: missing intro`\n" +
+			"Your `Testnet Validator Candidate` role has been removed. To reapply, run `/candidate-testnet` and start again."
 		got, err := tpl.Decline([]string{"Sync: not synced", "Profile: missing intro"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if got != want {
 			t.Errorf("Decline() = %q, want %q", got, want)
-		}
-	})
-
-	t.Run("EscalateToCall", func(t *testing.T) {
-		want := "Thanks for the submission. Before we decide, we need to clarify `sync status`. Can you join a short technical call at one of these times: `Tue 10:00 UTC, Wed 15:00 UTC`? It will focus on `sync status`."
-		got, err := tpl.EscalateToCall("sync status", "Tue 10:00 UTC, Wed 15:00 UTC", "sync status")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if got != want {
-			t.Errorf("EscalateToCall() = %q, want %q", got, want)
 		}
 	})
 }

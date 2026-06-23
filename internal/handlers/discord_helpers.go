@@ -68,11 +68,30 @@ func respondError(s *discordgo.Session, i *discordgo.Interaction, content string
 	}
 }
 
-func sendDM(s *discordgo.Session, userID, content string) error {
-	ch, err := s.UserChannelCreate(userID)
-	if err != nil {
-		return err
-	}
-	_, err = s.ChannelMessageSend(ch.ID, content)
+// channelPoster is the subset of *discordgo.Session that sendCandidateMessage
+// needs. The activation poller's Discord interface satisfies it too, so both the
+// command handlers and the poller share this one candidate-post implementation
+// (and its mention scoping) instead of each rolling their own.
+type channelPoster interface {
+	ChannelMessageSendComplex(channelID string, data *discordgo.MessageSend, options ...discordgo.RequestOption) (*discordgo.Message, error)
+}
+
+// sendCandidateMessage posts a candidate-facing message to channelID and pings
+// only the candidate: AllowedMentions is scoped to candidateID, so any stray
+// mention token in the content cannot fan out to @everyone or a role. It
+// replaces the old DM delivery, which was unreliable for non-mutual or
+// DM-disabled users and could get the bot flagged.
+//
+// Only bot-initiated notices use this. Approval (review_approve) and the
+// activation notice (the poller) go to the onboarding channel; decline
+// (review_decline) goes to general chat, because it removes the candidate role
+// and a roleless candidate keeps access to general but not onboarding.
+// Candidate-run commands (welcome on /candidate-testnet, acknowledgement on
+// /submit-request) reply ephemerally instead and do not use this helper.
+func sendCandidateMessage(poster channelPoster, channelID, candidateID, content string) error {
+	_, err := poster.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content:         "<@" + candidateID + "> " + content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{Users: []string{candidateID}},
+	})
 	return err
 }

@@ -10,23 +10,19 @@ import (
 )
 
 type rawTemplates struct {
-	Welcome            string `yaml:"welcome"`
-	Acknowledge        string `yaml:"acknowledge"`
-	RequestMissingInfo string `yaml:"request_missing_info"`
-	Approve            string `yaml:"approve"`
-	Decline            string `yaml:"decline"`
-	EscalateToCall     string `yaml:"escalate_to_call"`
-	Activated          string `yaml:"activated"`
+	Welcome     string `yaml:"welcome"`
+	Acknowledge string `yaml:"acknowledge"`
+	Approve     string `yaml:"approve"`
+	Decline     string `yaml:"decline"`
+	Activated   string `yaml:"activated"`
 }
 
 type Templates struct {
-	welcome            *template.Template
-	acknowledge        *template.Template
-	requestMissingInfo *template.Template
-	approve            *template.Template
-	decline            *template.Template
-	escalateToCall     *template.Template
-	activated          *template.Template
+	welcome     *template.Template
+	acknowledge *template.Template
+	approve     *template.Template
+	decline     *template.Template
+	activated   *template.Template
 }
 
 func Load(path string) (*Templates, error) {
@@ -47,10 +43,8 @@ func Load(path string) (*Templates, error) {
 	}{
 		{"welcome", raw.Welcome, &t.welcome},
 		{"acknowledge", raw.Acknowledge, &t.acknowledge},
-		{"request_missing_info", raw.RequestMissingInfo, &t.requestMissingInfo},
 		{"approve", raw.Approve, &t.approve},
 		{"decline", raw.Decline, &t.decline},
-		{"escalate_to_call", raw.EscalateToCall, &t.escalateToCall},
 		{"activated", raw.Activated, &t.activated},
 	}
 	for _, e := range entries {
@@ -79,20 +73,12 @@ func (t *Templates) Acknowledge() (string, error) {
 	return render(t.acknowledge, nil)
 }
 
-func (t *Templates) RequestMissingInfo(items []string) (string, error) {
-	return render(t.requestMissingInfo, struct{ Items []string }{items})
-}
-
 func (t *Templates) Approve() (string, error) {
 	return render(t.approve, nil)
 }
 
 func (t *Templates) Decline(criteria []string) (string, error) {
 	return render(t.decline, struct{ Criteria []string }{criteria})
-}
-
-func (t *Templates) EscalateToCall(topic, options, scope string) (string, error) {
-	return render(t.escalateToCall, struct{ Topic, Options, Scope string }{topic, options, scope})
 }
 
 func (t *Templates) Activated() (string, error) {
