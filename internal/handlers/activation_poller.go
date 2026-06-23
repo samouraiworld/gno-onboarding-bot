@@ -144,7 +144,8 @@ func (p *activationPoller) promotePending(ctx context.Context, r sheet.TrackerRo
 // role — e.g. a crash between the status write and the role grant, which the
 // pending-only promotion path would never revisit. It checks the candidate's
 // roles at most once per process (memoised in reconciled) and grants the missing
-// role (removing the candidate role and DMing) when it finds none.
+// role (removing the candidate role and posting the activation notice) when it
+// finds none.
 func (p *activationPoller) reconcileApproved(ctx context.Context, r sheet.TrackerRow) {
 	if p.reconciled[r.Row] {
 		return
@@ -180,8 +181,8 @@ func (p *activationPoller) reconcileApproved(ctx context.Context, r sheet.Tracke
 	p.clearWarn(r.Row)
 	if msg, terr := p.tpl.Activated(); terr != nil {
 		p.logf("activation: reconcile row %d render template: %v", r.Row, terr)
-	} else if derr := dmUser(p.disc, candidateID, msg); derr != nil {
-		p.logf("activation: reconcile row %d DM %s failed (DMs may be closed): %v", r.Row, candidateID, derr)
+	} else if derr := p.notifyCandidate(candidateID, msg); derr != nil {
+		p.logf("activation: reconcile row %d post activated notice for %s failed: %v", r.Row, candidateID, derr)
 	}
 	p.logf("activation: reconciled stranded row %d user=%s (granted missing validator role)", r.Row, candidateID)
 }
@@ -240,8 +241,8 @@ func (p *activationPoller) activate(ctx context.Context, r sheet.TrackerRow) {
 		p.logf("activation: render activated template (row %d): %v", r.Row, err)
 		return
 	}
-	if err := dmUser(p.disc, candidateID, msg); err != nil {
-		p.logf("activation: DM candidate %s (row %d) failed (DMs may be closed): %v", candidateID, r.Row, err)
+	if err := p.notifyCandidate(candidateID, msg); err != nil {
+		p.logf("activation: post activated notice for %s (row %d) failed: %v", candidateID, r.Row, err)
 	}
 	p.logf("activation: OK row %d user=%s moniker=%q", r.Row, candidateID, r.Moniker)
 }
@@ -261,11 +262,11 @@ func (p *activationPoller) clearWarn(row int) {
 	delete(p.warned, row)
 }
 
-func dmUser(d discordActions, userID, content string) error {
-	ch, err := d.UserChannelCreate(userID)
-	if err != nil {
-		return err
-	}
-	_, err = d.ChannelMessageSend(ch.ID, content)
+// notifyCandidate posts a candidate-facing message to the onboarding channel and
+// pings the candidate, matching the rest of the bot's no-DM delivery. An
+// activated candidate holds the Validator role, which can read the onboarding
+// channel.
+func (p *activationPoller) notifyCandidate(candidateID, content string) error {
+	_, err := p.disc.ChannelMessageSend(p.cfg.OnboardingChannelID, "<@"+candidateID+">\n"+content)
 	return err
 }
