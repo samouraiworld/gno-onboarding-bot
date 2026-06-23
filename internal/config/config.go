@@ -10,6 +10,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// minValidatorPollInterval is the floor for validator_poll_interval. It fails
+// closed against a misconfigured tiny interval hammering the RPC node and the
+// Sheets API every tick.
+const minValidatorPollInterval = 5 * time.Second
+
 type Config struct {
 	DiscordToken             string `yaml:"discord_token"`
 	GuildID                  string `yaml:"guild_id"`
@@ -32,6 +37,11 @@ type Config struct {
 	HarvestSince       string    `yaml:"harvest_since"`
 	HarvestMaxMessages int       `yaml:"harvest_max_messages"`
 	HarvestSinceParsed time.Time `yaml:"-"`
+
+	// ValidatorPollEvery is how often the activation poller checks the active
+	// validator set; ValidatorPollInterval is its Go-duration source (default 5m).
+	ValidatorPollInterval string        `yaml:"validator_poll_interval"`
+	ValidatorPollEvery    time.Duration `yaml:"-"`
 }
 
 func Load(path string) (*Config, error) {
@@ -52,6 +62,17 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("config harvest_since %q is not a valid RFC3339 timestamp: %w", cfg.HarvestSince, perr)
 		}
 		cfg.HarvestSinceParsed = t
+	}
+	cfg.ValidatorPollEvery = 5 * time.Minute
+	if cfg.ValidatorPollInterval != "" {
+		d, derr := time.ParseDuration(cfg.ValidatorPollInterval)
+		if derr != nil {
+			return nil, fmt.Errorf("config validator_poll_interval %q is not a valid Go duration: %w", cfg.ValidatorPollInterval, derr)
+		}
+		if d < minValidatorPollInterval {
+			return nil, fmt.Errorf("config validator_poll_interval must be at least %s, got %q", minValidatorPollInterval, cfg.ValidatorPollInterval)
+		}
+		cfg.ValidatorPollEvery = d
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err

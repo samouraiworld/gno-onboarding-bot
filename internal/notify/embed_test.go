@@ -9,7 +9,7 @@ import (
 )
 
 func TestBuildAndParseSubmissionEmbed(t *testing.T) {
-	embed := BuildSubmissionEmbed(58, "123456789012345678", "alice", "g1abc", "https://example.com/valoper/alice", "Hi, I'm alice")
+	embed := BuildSubmissionEmbed(58, "123456789012345678", "alice", "g1abc", "https://example.com/valoper/alice", "Hi, I'm alice", "3 sentries, self-hosted", "hot standby region")
 	msg := &discordgo.Message{Embeds: []*discordgo.MessageEmbed{embed}}
 
 	row, candidateID, valoperLink, err := ParseSubmissionEmbed(msg)
@@ -27,20 +27,35 @@ func TestBuildAndParseSubmissionEmbed(t *testing.T) {
 	}
 }
 
-func TestBuildSubmissionEmbed_TruncatesIntroduction(t *testing.T) {
+func TestBuildSubmissionEmbed_TruncatesLongFields(t *testing.T) {
 	long := strings.Repeat("a", 2000)
-	embed := BuildSubmissionEmbed(1, "123", "m", "g1abc", "https://x", long)
-	var intro string
+	embed := BuildSubmissionEmbed(1, "123", "m", "g1abc", "https://x", long, long, long)
+	got := map[string]string{}
 	for _, f := range embed.Fields {
-		if f.Name == FieldIntroduction {
-			intro = f.Value
+		got[f.Name] = f.Value
+	}
+	for _, name := range []string{FieldIntroduction, FieldArchitecture, FieldBackupPlan} {
+		v := got[name]
+		if n := utf8.RuneCountInString(v); n > 1024 {
+			t.Errorf("%s = %d runes, want <= 1024", name, n)
+		}
+		if !strings.HasSuffix(v, "…") {
+			t.Errorf("expected ellipsis suffix on truncated %s", name)
 		}
 	}
-	if n := utf8.RuneCountInString(intro); n > 1024 {
-		t.Errorf("introduction = %d runes, want <= 1024", n)
+}
+
+func TestBuildSubmissionEmbed_IncludesArchitectureAndBackup(t *testing.T) {
+	embed := BuildSubmissionEmbed(1, "123", "m", "g1abc", "https://x", "intro", "3 sentries, self-hosted", "hot standby region")
+	got := map[string]string{}
+	for _, f := range embed.Fields {
+		got[f.Name] = f.Value
 	}
-	if !strings.HasSuffix(intro, "…") {
-		t.Error("expected ellipsis suffix on truncated introduction")
+	if got[FieldArchitecture] != "3 sentries, self-hosted" {
+		t.Errorf("architecture field = %q, want %q", got[FieldArchitecture], "3 sentries, self-hosted")
+	}
+	if got[FieldBackupPlan] != "hot standby region" {
+		t.Errorf("backup plan field = %q, want %q", got[FieldBackupPlan], "hot standby region")
 	}
 }
 

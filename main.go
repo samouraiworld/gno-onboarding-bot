@@ -48,7 +48,7 @@ func main() {
 	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure status colors: %v", err)
 	}
-	// Color the -approved tab by status too, so "GovDAO submitted" and "GovDAO
+	// Color the -approved tab by status too, so "GovDAO approved" and "GovDAO
 	// pending" rows are visually separated (replaces the old divider row).
 	if err := sheet.EnsureStatusColors(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
 		log.Fatalf("ensure status colors (approved): %v", err)
@@ -59,7 +59,7 @@ func main() {
 	if err := sheet.EnsureFrozenHeader(context.Background(), sheetsClient, cfg.SheetID, sheet.ApprovedTabName(cfg.SheetName)); err != nil {
 		log.Fatalf("ensure frozen header (approved): %v", err)
 	}
-	// Harvest assessment layer: N-Y columns + criterion checkboxes, the -evidence tab.
+	// Harvest assessment layer: P-AA columns + criterion checkboxes, the -evidence tab.
 	if err := sheet.EnsureHarvestLayout(context.Background(), sheetsClient, cfg.SheetID, cfg.SheetName); err != nil {
 		log.Fatalf("ensure harvest layout: %v", err)
 	}
@@ -99,8 +99,15 @@ func main() {
 		log.Fatalf("register submit command: %v", err)
 	}
 
+	pollCtx, cancelPoll := context.WithCancel(context.Background())
+	defer cancelPoll()
+	pollDone := handlers.StartActivationPoller(pollCtx, s, cfg, sheetsClient, tpl, renderer, cfg.ValidatorPollEvery)
+	log.Printf("activation poller running every %s", cfg.ValidatorPollEvery)
+
 	log.Println("bot is running, press Ctrl+C to exit")
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	cancelPoll()
+	<-pollDone
 }

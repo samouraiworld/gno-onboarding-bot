@@ -14,6 +14,7 @@ type rawTemplates struct {
 	Acknowledge string `yaml:"acknowledge"`
 	Approve     string `yaml:"approve"`
 	Decline     string `yaml:"decline"`
+	Activated   string `yaml:"activated"`
 }
 
 type Templates struct {
@@ -21,6 +22,7 @@ type Templates struct {
 	acknowledge *template.Template
 	approve     *template.Template
 	decline     *template.Template
+	activated   *template.Template
 }
 
 func Load(path string) (*Templates, error) {
@@ -43,6 +45,7 @@ func Load(path string) (*Templates, error) {
 		{"acknowledge", raw.Acknowledge, &t.acknowledge},
 		{"approve", raw.Approve, &t.approve},
 		{"decline", raw.Decline, &t.decline},
+		{"activated", raw.Activated, &t.activated},
 	}
 	for _, e := range entries {
 		parsed, err := template.New(e.name).Parse(e.text)
@@ -76,4 +79,8 @@ func (t *Templates) Approve() (string, error) {
 
 func (t *Templates) Decline(criteria []string) (string, error) {
 	return render(t.decline, struct{ Criteria []string }{criteria})
+}
+
+func (t *Templates) Activated() (string, error) {
+	return render(t.activated, nil)
 }
