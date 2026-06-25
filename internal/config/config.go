@@ -42,6 +42,13 @@ type Config struct {
 	// validator set; ValidatorPollInterval is its Go-duration source (default 5m).
 	ValidatorPollInterval string        `yaml:"validator_poll_interval"`
 	ValidatorPollEvery    time.Duration `yaml:"-"`
+
+	// Google Sheets retry/backoff for rate-limit (429) and transient (5xx) responses; any unset field falls back to the client default.
+	SheetMaxRetries     int           `yaml:"sheet_max_retries"`
+	SheetRetryBase      string        `yaml:"sheet_retry_base"`
+	SheetRetryMax       string        `yaml:"sheet_retry_max"`
+	SheetRetryBaseEvery time.Duration `yaml:"-"`
+	SheetRetryMaxEvery  time.Duration `yaml:"-"`
 }
 
 func Load(path string) (*Config, error) {
@@ -73,6 +80,20 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("config validator_poll_interval must be at least %s, got %q", minValidatorPollInterval, cfg.ValidatorPollInterval)
 		}
 		cfg.ValidatorPollEvery = d
+	}
+	if cfg.SheetRetryBase != "" {
+		d, derr := time.ParseDuration(cfg.SheetRetryBase)
+		if derr != nil {
+			return nil, fmt.Errorf("config sheet_retry_base %q is not a valid Go duration: %w", cfg.SheetRetryBase, derr)
+		}
+		cfg.SheetRetryBaseEvery = d
+	}
+	if cfg.SheetRetryMax != "" {
+		d, derr := time.ParseDuration(cfg.SheetRetryMax)
+		if derr != nil {
+			return nil, fmt.Errorf("config sheet_retry_max %q is not a valid Go duration: %w", cfg.SheetRetryMax, derr)
+		}
+		cfg.SheetRetryMaxEvery = d
 	}
 	if err := cfg.validate(); err != nil {
 		return nil, err

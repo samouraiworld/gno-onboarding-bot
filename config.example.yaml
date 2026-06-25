@@ -63,3 +63,15 @@ harvest_max_messages: 2000
 # duration (e.g. "5m", "30s"). Optional; defaults to 5m. Minimum 5s (smaller
 # values are rejected to avoid hammering the RPC node and the Sheets API).
 validator_poll_interval: "5m"
+
+# Google Sheets retry/backoff. The Sheets API caps write requests per minute per
+# user, so a busy /harvest or /harvest-import pass can hit "Error 429: Quota
+# exceeded". On a 429 (or a transient 5xx) the bot retries the request with
+# exponential backoff + jitter (and honors a Retry-After header when present)
+# rather than failing the whole pass. All three are optional; the defaults below
+# accumulate ~1.5-3min of backoff, enough to outlast a per-minute quota window.
+# Raise sheet_max_retries / sheet_retry_max if you still see 429s on very large
+# passes.
+sheet_max_retries: 8        # total attempts including the first
+sheet_retry_base: "2s"      # first backoff delay (Go duration)
+sheet_retry_max: "60s"      # cap on the backoff delay (Go duration)
