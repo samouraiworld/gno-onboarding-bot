@@ -7,9 +7,9 @@ acknowledge: |-
   Thanks, we received the operator address submitted with `/submit-request`. The Gno team will review it against the published criteria and reply.
 
 approve: |-
-  Congratulations, you passed the reviewers' onboarding check. Your application has been forwarded to the GovDAO.
+  Congratulations, you passed the onboarding challenge.
 
-  Next: the GovDAO must admit your validator to the active set. Once your validator appears in the active set, the bot automatically grants you the `Testnet Validator` role and notifies you. New external validators start with voting power `1` and may earn more later through a separate, documented process.
+  Next: wait for GovDAO approval and confirmation before treating your validator as active. New external validators start with voting power `1` and may earn more later through a separate, documented process.
 
 activated: |-
   Your validator is now in the active set — the GovDAO has admitted it, and the bot has granted you the `Testnet Validator` role. Welcome aboard!
