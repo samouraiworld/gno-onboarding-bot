@@ -74,4 +74,4 @@ validator_poll_interval: "5m"
 # passes.
 sheet_max_retries: 8        # total attempts including the first
 sheet_retry_base: "2s"      # first backoff delay (Go duration)
-sheet_retry_max: "60s"      # cap on the backoff delay (Go duration)
+sheet_retry_max: "60s"      # cap on the backoff delay, incl. any Retry-After (Go duration)
