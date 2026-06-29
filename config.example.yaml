@@ -47,7 +47,7 @@ sheet_name: "Candidates"
 gno_rpc_endpoint: ""   # e.g. https://rpc.test13.testnets.gno.land
 
 # gnoweb base URL for the same chain, used to build the links shown to candidates and reviewers.
-gnoweb_base_url: ""    # e.g. https://gnoweb.test-13.gnoland.network
+gnoweb_base_url: ""    # e.g. https://test13.testnets.gno.land
 
 # End-of-window harvest (optional, see docs/harvest.md). For /harvest, also enable
 # the privileged Message Content intent (above) and grant Read Message History.
