@@ -3,12 +3,23 @@ package sheet
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"syscall"
 	"testing"
 	"time"
 
 	"google.golang.org/api/googleapi"
 )
+
+// timeoutErr is a net.Error reporting Timeout() == true, like a transport read deadline.
+type timeoutErr struct{}
+
+func (timeoutErr) Error() string   { return "i/o timeout" }
+func (timeoutErr) Timeout() bool   { return true }
+func (timeoutErr) Temporary() bool { return true }
 
 func TestIsRetryable(t *testing.T) {
 	tests := []struct {
@@ -25,6 +36,11 @@ func TestIsRetryable(t *testing.T) {
 		{"404", &googleapi.Error{Code: 404}, false},
 		{"wrapped 429", errors.Join(errors.New("update Z47"), &googleapi.Error{Code: 429}), true},
 		{"plain error", errors.New("boom"), false},
+		{"timeout net.Error", &net.OpError{Op: "read", Err: timeoutErr{}}, true},
+		{"connection reset", &net.OpError{Op: "read", Err: syscall.ECONNRESET}, true},
+		{"unexpected EOF", &url.Error{Op: "Get", Err: io.ErrUnexpectedEOF}, true},
+		{"context canceled", context.Canceled, false},
+		{"context deadline (timeout)", &url.Error{Op: "Get", Err: context.DeadlineExceeded}, false},
 	}
 	for _, tt := range tests {
 		if got := isRetryable(tt.err); got != tt.want {

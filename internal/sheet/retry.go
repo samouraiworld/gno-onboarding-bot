@@ -3,10 +3,13 @@ package sheet
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"math/rand"
+	"net"
 	"net/http"
 	"strconv"
+	"syscall"
 	"time"
 
 	"google.golang.org/api/googleapi"
@@ -83,13 +86,24 @@ func jitter(d time.Duration) time.Duration {
 	return d/2 + time.Duration(rand.Int63n(int64(d/2)+1))
 }
 
-// isRetryable reports whether err is a Sheets rate-limit (429) or transient server error (5xx).
+// isRetryable reports whether err is a Sheets rate-limit (429), transient
+// server error (5xx), or transient transport failure (timeout, connection
+// reset, unexpected EOF).
 func isRetryable(err error) bool {
+	// A cancelled/expired context is terminal, not transient.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
 	var gerr *googleapi.Error
 	if errors.As(err, &gerr) {
 		return gerr.Code == http.StatusTooManyRequests || gerr.Code >= 500
 	}
-	return false
+	// Transport failures aren't *googleapi.Error, so match them directly.
+	var nerr net.Error
+	if errors.As(err, &nerr) && nerr.Timeout() {
+		return true
+	}
+	return errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET)
 }
 
 // retryAfter reads the response's Retry-After header (integer seconds or an
