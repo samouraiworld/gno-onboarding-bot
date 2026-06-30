@@ -189,7 +189,24 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 		}
 	}
 
-	data, err := json.MarshalIndent(hf, "", "  ")
+	// Drop already-imported candidates from the attachment (they stay in the sheet
+	// writes above); each harvest.json carries only candidates awaiting a digest.
+	imported := map[int]bool{}
+	for _, r := range records {
+		if isImported(r.Readiness) {
+			imported[r.Row] = true
+		}
+	}
+	attach := hf
+	attach.Candidates = nil
+	for _, c := range hf.Candidates {
+		if imported[c.Row] {
+			continue
+		}
+		attach.Candidates = append(attach.Candidates, c)
+	}
+
+	data, err := json.MarshalIndent(attach, "", "  ")
 	if err != nil {
 		editEphemeral(s, i.Interaction, "Harvest written to the Sheet, but encoding harvest.json failed.")
 		return
@@ -198,6 +215,9 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	var notes []string
 	if validated > 0 {
 		notes = append(notes, fmt.Sprintf("%d already-validated", validated))
+	}
+	if len(imported) > 0 {
+		notes = append(notes, fmt.Sprintf("%d already-imported omitted from harvest.json", len(imported)))
 	}
 	if len(superseded) > 0 {
 		notes = append(notes, fmt.Sprintf("%d duplicate rows collapsed", len(superseded)))
@@ -212,7 +232,7 @@ func handleHarvest(s *discordgo.Session, i *discordgo.InteractionCreate, cfg *co
 	}
 	content := fmt.Sprintf(
 		"Harvest complete: %d candidates%s, %d messages. The Evidence tab and the Red flags / Engagement columns are updated.%s\n\nNext: run the `competency-digest` skill on the attached `harvest.json`, then `/harvest-import` the resulting `digest.json`.",
-		len(hf.Candidates), skipped, len(messages), warning,
+		len(attach.Candidates), skipped, len(messages), warning,
 	)
 	if _, err := s.InteractionResponseEdit(i.Interaction, &discordgo.WebhookEdit{
 		Content: &content,
@@ -321,6 +341,13 @@ func joinCapped(notes []string, max int) string {
 		return strings.Join(notes, "; ")
 	}
 	return strings.Join(notes[:max], "; ") + fmt.Sprintf("; and %d more", len(notes)-max)
+}
+
+// isImported reports whether a Readiness cell (col P) holds an import verdict,
+// not the empty value or the "Duplicate of row N" marker sharing that column.
+func isImported(readiness string) bool {
+	r := strings.TrimSpace(readiness)
+	return r != "" && !strings.HasPrefix(r, "Duplicate of row")
 }
 
 type supersededRow struct{ row, keptRow int }

@@ -52,6 +52,10 @@ feeds PR #4's `-approved` view; the harvest only informs that decision.
    ones `Duplicate of row N`), reads `#general` + `#testnet-onboarding` +
    `#validator-review`, redacts secrets, writes the evidence tab + Red flags /
    Engagement, and replies with `harvest.json` as an **ephemeral** attachment.
+   Candidates already digested and imported (Readiness col P set by a prior
+   `/harvest-import`) are **omitted from `harvest.json`** so each file carries only
+   candidates still awaiting a digest — but they stay in the sheet writes, so their
+   Y/Z and the evidence tab keep refreshing every run.
 2. **The `competency-digest` skill** reads `harvest.json` and writes
    `digest.json` (summary, per-criterion state, readiness band).
 3. **`/harvest-import`** (reviewer-only, takes `digest.json`) refreshes Readiness,
