@@ -32,7 +32,11 @@ func main() {
 		log.Fatalf("load templates: %v", err)
 	}
 
-	sheetsClient, err := sheet.NewGoogleSheetsClient(context.Background(), cfg.GoogleCredentialsFile)
+	sheetsClient, err := sheet.NewGoogleSheetsClient(context.Background(), cfg.GoogleCredentialsFile, sheet.RetryPolicy{
+		MaxAttempts: cfg.SheetMaxRetries,
+		BaseDelay:   cfg.SheetRetryBaseEvery,
+		MaxDelay:    cfg.SheetRetryMaxEvery,
+	})
 	if err != nil {
 		log.Fatalf("create sheets client: %v", err)
 	}
