@@ -524,6 +524,8 @@ type TrackerRow struct {
 	Moniker         string
 	OperatorAddress string
 	Introduction    string
+	// Readiness (col P, set by /harvest-import) marks a row as already imported.
+	Readiness string
 }
 
 func cellAt(row []interface{}, idx int) string {
@@ -536,10 +538,10 @@ func cellAt(row []interface{}, idx int) string {
 	return fmt.Sprint(row[idx])
 }
 
-// ReadCandidates reads the intake rows (A2 down to the last intake column);
+// ReadCandidates reads the intake rows plus the Readiness column (A2 down to P);
 // header row 1 is skipped and rows with an empty Candidate cell are ignored.
 func ReadCandidates(ctx context.Context, api API, spreadsheetID, sheetName string) ([]TrackerRow, error) {
-	rows, err := api.Get(ctx, spreadsheetID, fmt.Sprintf("%s!A2:%s", sheetName, columnLetter(Column(len(Headers)-1))))
+	rows, err := api.Get(ctx, spreadsheetID, fmt.Sprintf("%s!A2:%s", sheetName, columnLetter(ColumnReadiness)))
 	if err != nil {
 		return nil, fmt.Errorf("read candidates: %w", err)
 	}
@@ -558,6 +560,7 @@ func ReadCandidates(ctx context.Context, api API, spreadsheetID, sheetName strin
 			Moniker:         cellAt(r, int(ColumnMoniker)),
 			OperatorAddress: cellAt(r, int(ColumnOperatorAddress)),
 			Introduction:    cellAt(r, int(ColumnIntroduction)),
+			Readiness:       cellAt(r, int(ColumnReadiness)),
 		})
 	}
 	return out, nil
